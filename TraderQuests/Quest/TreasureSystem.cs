@@ -9,7 +9,6 @@ using ServerSync;
 using TraderQuests.Behaviors;
 using TraderQuests.translations;
 using UnityEngine;
-using UnityEngine.UI;
 using YamlDotNet.Serialization;
 
 namespace TraderQuests.Quest;
@@ -21,8 +20,8 @@ public static class TreasureSystem
     private static List<TreasureData.TreasureConfig> Configs = new();
     private static GameObject? TreasureBarrel;
     public static readonly Dictionary<string, TreasureData> AllTreasures = new();
-    public static Dictionary<string, TreasureData> AvailableTreasures = new();
-    public static readonly Dictionary<string, TreasureData> ActiveTreasures = new();
+    private static Dictionary<string, TreasureData> AvailableTreasures = new();
+    private static readonly Dictionary<string, TreasureData> ActiveTreasures = new();
     private static readonly Dictionary<string, TreasureData> CompletedTreasures = new();
     public static TreasureData? SelectedTreasure;
     public static TreasureData? SelectedActiveTreasure;
@@ -281,7 +280,7 @@ public static class TreasureSystem
             TraderQuestsPlugin.TreasureCooldown.Value * 60)
         {
             CurrentTreasures.Clear();
-            List<TreasureData> treasures = new List<TreasureData>(AvailableTreasures.Values.ToList());
+            List<TreasureData> treasures = new List<TreasureData>(AvailableTreasures.Values.Where(treasure => treasure.HasRequiredKey()).ToList());
             for (int index = 0; index < TraderQuestsPlugin.MaxTreasureDisplayed.Value; ++index)
             {
                 if (GetRandomWeightedTreasure(treasures) is { } treasure)
@@ -334,154 +333,212 @@ public static class TreasureSystem
     
     private static void SetupItem(GameObject item, TreasureData data, bool active)
     {
+        if (!item.TryGetComponent(out ItemUI component)) return;
         bool enable = data.HasRequirements();
-        Text name = Utils.FindChild(item.transform, "$text_name").GetComponent<Text>();
-        name.text = data.Config.Name;
-        name.color = enable ? new Color32(255, 255, 255, 255) : new Color32(150, 150, 150, 255);
-        Image icon = Utils.FindChild(item.transform, "$image_icon").GetComponent<Image>();
-        icon.sprite = data.Icon;
-        icon.color = enable ? Color.white : Color.gray;
-        Image currency = Utils.FindChild(item.transform, "$image_currency").GetComponent<Image>();
-        currency.sprite = data.CurrencyIcon;
-        currency.color = enable ? Color.white : Color.gray;
-        Text currencyText = Utils.FindChild(item.transform, "$text_currency").GetComponent<Text>();
-        currencyText.text = data.Config.Price.ToString();
-        currencyText.color = enable ? new Color32(255, 164, 0, 255) : new Color32(150, 150, 150, 255);
-        Transform selected = item.transform.Find("$image_selected");
-        selected.GetComponent<Image>().color = enable ? new Color32(255, 164, 0, 255) : new Color32(255, 164, 0, 200);
-
-        item.GetComponent<Button>().onClick.AddListener(() =>
-        {
-            TraderUI.m_instance.DeselectAll();
-            selected.gameObject.SetActive(true);
-            TraderUI.m_instance.SetSelectionButtons(Keys.Select, Keys.Cancel);
-
-            if (active)
-            {
-                SelectedActiveTreasure = data;
-            }
-            else
-            {
-                if (!QuestSystem.FindSpawnLocation(data.Biome, out Vector3 position))
-                {
-                    Player.m_localPlayer.Message(MessageHud.MessageType.Center, "Failed to generate spawn location");
-                    return;
-                }
-                data.Position = position;
-                SelectedTreasure = data;
-            }
-            BountySystem.SelectedActiveBounty = null;
-            TraderUI.m_instance.m_selectButtonText.color = enable ? new Color32(255, 164, 0, 255) : Color.gray;
-            TraderUI.m_instance.SetTooltip(data.GetTooltip());
-        });
+        
+        component.SetName(data.Config.Name, enable);
+        component.SetIcon(data.Icon, enable);
+        component.SetCurrency(data.CurrencyIcon, enable);
+        component.SetPrice(data.Config.Price.ToString(), enable);
+        component.SetSelected(enable);
+        component.m_button.onClick.AddListener(() => data.OnSelected(component, enable, active));
     }
 
     private static List<TreasureData.TreasureConfig> GetDefaultTreasures()
     {
         return new List<TreasureData.TreasureConfig>()
         {
+            // 1. Meadows - Early Game Treasure
             new TreasureData.TreasureConfig()
             {
                 UniqueID = "MeadowTreasure.0001",
-                Name = "Meadow Treasure I",
+                Name = "The Forager’s Trove",
                 Biome = "Meadows",
                 CurrencyPrefab = "Coins",
                 Price = 10,
                 Rewards = new List<TreasureData.TreasureConfig.RewardConfig>()
                 {
-                    new TreasureData.TreasureConfig.RewardConfig()
-                    {
-                        PrefabName = "Wood",
-                        Amount = 10,
-                    },
-                    new TreasureData.TreasureConfig.RewardConfig()
-                    {
-                        PrefabName = "TraderCoin_RS",
-                        Amount = 1,
-                    },
-                    new TreasureData.TreasureConfig.RewardConfig()
-                    {
-                        PrefabName = "Club",
-                        Amount = 1,
-                        Quality = 3
-                    },
-                    new TreasureData.TreasureConfig.RewardConfig()
-                    {
-                        PrefabName = "Wood",
-                        Amount = 10,
-                    },
-                    new TreasureData.TreasureConfig.RewardConfig()
-                    {
-                        PrefabName = "TraderCoin_RS",
-                        Amount = 1,
-                    },
-                    new TreasureData.TreasureConfig.RewardConfig()
-                    {
-                        PrefabName = "Club",
-                        Amount = 1,
-                        Quality = 3
-                    },
-                    new TreasureData.TreasureConfig.RewardConfig()
-                    {
-                        PrefabName = "Wood",
-                        Amount = 10,
-                    },
-                    new TreasureData.TreasureConfig.RewardConfig()
-                    {
-                        PrefabName = "TraderCoin_RS",
-                        Amount = 1,
-                    },
-                    new TreasureData.TreasureConfig.RewardConfig()
-                    {
-                        PrefabName = "Club",
-                        Amount = 1,
-                        Quality = 3
-                    },
-                    new TreasureData.TreasureConfig.RewardConfig()
-                    {
-                        PrefabName = "Wood",
-                        Amount = 10,
-                    },
-                    new TreasureData.TreasureConfig.RewardConfig()
-                    {
-                        PrefabName = "TraderCoin_RS",
-                        Amount = 1,
-                    },
-                    new TreasureData.TreasureConfig.RewardConfig()
-                    {
-                        PrefabName = "Club",
-                        Amount = 1,
-                        Quality = 3
-                    },
-                    new TreasureData.TreasureConfig.RewardConfig()
-                    {
-                        PrefabName = "Wood",
-                        Amount = 10,
-                    },
-                    new TreasureData.TreasureConfig.RewardConfig()
-                    {
-                        PrefabName = "TraderCoin_RS",
-                        Amount = 1,
-                    },
-                    new TreasureData.TreasureConfig.RewardConfig()
-                    {
-                        PrefabName = "Club",
-                        Amount = 1,
-                        Quality = 3
-                    }
+                    new() { PrefabName = "Wood", Amount = 10 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 1 },
+                    new() { PrefabName = "Club", Amount = 1, Quality = 3 }
+                }
+            },
+
+            // 2. Black Forest - Hidden Cache
+            new TreasureData.TreasureConfig()
+            {
+                UniqueID = "BlackForestTreasure.0001",
+                Name = "Forest Cache",
+                Biome = "BlackForest",
+                CurrencyPrefab = "Coins",
+                Price = 25,
+                RequiredKey = "defeated_gdking",
+                Rewards = new List<TreasureData.TreasureConfig.RewardConfig>()
+                {
+                    new() { PrefabName = "Coins", Amount = 50 },
+                    new() { PrefabName = "Resin", Amount = 5 },
+                    new() { PrefabName = "Bronze", Amount = 2 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 1 }
+                }
+            },
+
+            // 3. Swamp - Sunken Chest
+            new TreasureData.TreasureConfig()
+            {
+                UniqueID = "SwampTreasure.0001",
+                Name = "Sunken Relic Chest",
+                Biome = "Swamp",
+                CurrencyPrefab = "Coins",
+                Price = 50,
+                RequiredKey = "defeated_bonemass",
+                Rewards = new List<TreasureData.TreasureConfig.RewardConfig>()
+                {
+                    new() { PrefabName = "Coins", Amount = 100 },
+                    new() { PrefabName = "WitheredBone", Amount = 3 },
+                    new() { PrefabName = "IronScrap", Amount = 5 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 2 }
+                }
+            },
+
+            // 4. Mountains - Frozen Hoard
+            new TreasureData.TreasureConfig()
+            {
+                UniqueID = "MountainTreasure.0001",
+                Name = "Frozen Hoard",
+                Biome = "Mountains",
+                CurrencyPrefab = "Coins",
+                Price = 75,
+                RequiredKey = "defeated_dragon", 
+                Rewards = new List<TreasureData.TreasureConfig.RewardConfig>()
+                {
+                    new() { PrefabName = "Coins", Amount = 200 },
+                    new() { PrefabName = "WolfPelt", Amount = 3 },
+                    new() { PrefabName = "Obsidian", Amount = 5 },
+                    new() { PrefabName = "SilverOre", Amount = 3 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 3 }
+                }
+            },
+
+            // 5. Plains - Buried Fuling Treasure
+            new TreasureData.TreasureConfig()
+            {
+                UniqueID = "PlainsTreasure.0001",
+                Name = "Fuling Burial Cache",
+                Biome = "Plains",
+                CurrencyPrefab = "Coins",
+                Price = 120,
+                RequiredKey = "defeated_goblinking",
+                Rewards = new List<TreasureData.TreasureConfig.RewardConfig>()
+                {
+                    new() { PrefabName = "Coins", Amount = 400 },
+                    new() { PrefabName = "BlackMetalScrap", Amount = 10 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 4 },
+                    new() { PrefabName = "LinenThread", Amount = 3 }
+                }
+            },
+
+            // 6. Mistlands - Ancient Vault
+            new TreasureData.TreasureConfig()
+            {
+                UniqueID = "MistlandsTreasure.0001",
+                Name = "Ancient Vault",
+                Biome = "Mistlands",
+                CurrencyPrefab = "Coins",
+                Price = 200,
+                RequiredKey = "defeated_queen",
+                Rewards = new List<TreasureData.TreasureConfig.RewardConfig>()
+                {
+                    new() { PrefabName = "Coins", Amount = 800 },
+                    new() { PrefabName = "BlackCore", Amount = 2 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 5 },
+                    new() { PrefabName = "Eitr", Amount = 5 }
+                }
+            },
+            
+            // 7. Ocean - Sunken Smuggler’s Chest
+            new TreasureData.TreasureConfig()
+            {
+                UniqueID = "OceanTreasure.0001",
+                Name = "Sunken Smuggler’s Chest",
+                Biome = "Ocean",
+                CurrencyPrefab = "Coins",
+                Price = 60,
+                RequiredKey = "defeated_bonemass",
+                Rewards = new List<TreasureData.TreasureConfig.RewardConfig>()
+                {
+                    new() { PrefabName = "Coins", Amount = 150 },
+                    new() { PrefabName = "SerpentScale", Amount = 5 },
+                    new() { PrefabName = "Chitin", Amount = 3 },
+                    new() { PrefabName = "CookedSerpentMeat", Amount = 2 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 1 }
+                }
+            },
+
+            // 8. Deep Caves - Dvergr Relic Stash
+            new TreasureData.TreasureConfig()
+            {
+                UniqueID = "DeepCaveTreasure.0001",
+                Name = "Dvergr Relic Stash",
+                Biome = "DeepCave",
+                CurrencyPrefab = "Coins",
+                Price = 140,
+                RequiredKey = "defeated_queen",
+                Rewards = new List<TreasureData.TreasureConfig.RewardConfig>()
+                {
+                    new() { PrefabName = "Coins", Amount = 500 },
+                    new() { PrefabName = "BlackMarble", Amount = 10 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 8 },
+                    new() { PrefabName = "SoftTissue", Amount = 5 }
+                }
+            },
+
+            // 9. Ashlands - Ashen Titan’s Hoard
+            new TreasureData.TreasureConfig()
+            {
+                UniqueID = "AshlandsTreasure.0001",
+                Name = "Ashen Titan’s Hoard",
+                Biome = "AshLands",
+                CurrencyPrefab = "Coins",
+                Price = 250,
+                RequiredKey = "defeated_fader",
+                Rewards = new List<TreasureData.TreasureConfig.RewardConfig>()
+                {
+                    new() { PrefabName = "Coins", Amount = 1000 },
+                    new() { PrefabName = "FlametalOre", Amount = 5 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 10 },
+                    new() { PrefabName = "FireGland", Amount = 8 }
+                }
+            },
+
+            // 10. Deep North - Frostbound Reliquary
+            new TreasureData.TreasureConfig()
+            {
+                UniqueID = "DeepNorthTreasure.0001",
+                Name = "Frostbound Reliquary",
+                Biome = "DeepNorth",
+                CurrencyPrefab = "Coins",
+                Price = 275,
+                RequiredKey = "defeated_fader",
+                IconPrefab = "TrophySGolem",
+                Rewards = new List<TreasureData.TreasureConfig.RewardConfig>()
+                {
+                    new() { PrefabName = "Coins", Amount = 1200 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 10 },
+                    new() { PrefabName = "YmirRemains", Amount = 5 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 3 }
                 }
             }
         };
     }
 
-
     public class TreasureData
     {
         public readonly TreasureConfig Config;
         public bool IsValid = true;
-        public Heightmap.Biome Biome;
-        public Sprite? Icon;
-        public Sprite? CurrencyIcon;
+        private Heightmap.Biome Biome;
+        public Sprite Icon = null!;
+        public Sprite CurrencyIcon = null!;
+        private GameObject CurrencyPrefab = null!;
         private string CurrencySharedName = "";
         public Vector3 Position;
         public Minimap.PinData? PinData;
@@ -489,6 +546,34 @@ public static class TreasureSystem
         private bool Completed;
         public long CompletedOn;
         public bool Spawned;
+
+        public void OnSelected(ItemUI component, bool enable, bool active)
+        {
+            TraderUI.m_instance.DeselectAll();
+            TraderUI.m_instance.SetDefaultButtonTextColor();
+            component.OnSelected(true);
+            TraderUI.m_instance.SetSelectionButtons(Keys.Select, Keys.Cancel);
+
+            if (active)
+            {
+                SelectedActiveTreasure = this;
+            }
+            else
+            {
+                if (!QuestSystem.FindSpawnLocation(Biome, out Vector3 position))
+                {
+                    Player.m_localPlayer.Message(MessageHud.MessageType.Center, "Failed to generate spawn location");
+                    return;
+                }
+                Position = position;
+                SelectedTreasure = this;
+            }
+            BountySystem.SelectedActiveBounty = null;
+            TraderUI.m_instance.m_selectButtonText.color = enable ? new Color32(255, 164, 0, 255) : Color.gray;
+            TraderUI.m_instance.SetTooltip(GetTooltip());
+            TraderUI.m_instance.SetCurrencyIcon(CurrencyIcon);
+            TraderUI.m_instance.SetCurrentCurrency(Player.m_localPlayer.GetInventory().CountItems(CurrencySharedName).ToString());
+        }
 
         public void Setup()
         {
@@ -498,13 +583,13 @@ public static class TreasureSystem
             if (!ValidateCurrency()) IsValid = false;
         }
 
-        public string GetTooltip()
+        private string GetTooltip()
         {
             StringBuilder stringBuilder = new StringBuilder();
             stringBuilder.Append($"\n<color=yellow>{Config.Name}</color>\n\n");
-            stringBuilder.Append($"{Keys.Location}: {Biome}\n");
-            stringBuilder.Append($"{Keys.Distance}: {Mathf.FloorToInt(Vector3.Distance(Player.m_localPlayer.transform.position, Position))}\n");
-            stringBuilder.Append($"{Keys.Rewards}:\n");
+            stringBuilder.Append($"{Keys.Location}: <color=orange>{Biome}</color>\n");
+            stringBuilder.Append($"{Keys.Distance}: <color=orange>{Mathf.FloorToInt(Vector3.Distance(Player.m_localPlayer.transform.position, Position))}</color>\n");
+            stringBuilder.Append($"<color=orange>{Keys.Rewards}:</color>\n");
             foreach (var reward in Rewards)
             {
                 stringBuilder.Append($"{reward.SharedName} x{reward.Config.Amount}\n");
@@ -536,9 +621,15 @@ public static class TreasureSystem
         public bool HasRequirements()
         {
             if (!Player.m_localPlayer) return false;
-            if (!Config.RequiredKey.IsNullOrWhiteSpace() && !Player.m_localPlayer.HaveUniqueKey(Config.RequiredKey)) return false;
+            if (!HasRequiredKey()) return false;
             if (ActiveTreasures.Count >= TraderQuestsPlugin.MaxActiveTreasures.Value) return false;
             return Player.m_localPlayer.GetInventory().CountItems(CurrencySharedName) >= Config.Price;
+        }
+
+        public bool HasRequiredKey()
+        {
+            if (Config.RequiredKey.IsNullOrWhiteSpace()) return true;
+            return Player.m_localPlayer.HaveUniqueKey(Config.RequiredKey);
         }
 
         public bool Activate(bool checkRequirements = true)
@@ -550,9 +641,24 @@ public static class TreasureSystem
             }
 
             AvailableTreasures.Remove(Config.UniqueID);
+            CurrentTreasures.Remove(this);
             ActiveTreasures[Config.UniqueID] = this;
             SelectedTreasure = null;
             UpdateMinimap();
+            return true;
+        }
+
+        public bool Deactivate(bool returnCost)
+        {
+            if (returnCost)
+            {
+                if (!Player.m_localPlayer.GetInventory().HaveEmptySlot()) return false;
+                if (!Player.m_localPlayer.GetInventory().AddItem(CurrencyPrefab, Config.Price)) return false;
+            }
+
+            ActiveTreasures.Remove(Config.UniqueID);
+            AvailableTreasures[Config.UniqueID] = this;
+            CurrentTreasures.Add(this);
             return true;
         }
 
@@ -561,6 +667,7 @@ public static class TreasureSystem
             if (ObjectDB.m_instance.GetItemPrefab(Config.CurrencyPrefab) is not { } prefab || !prefab.TryGetComponent(out ItemDrop component)) return false;
             CurrencySharedName = component.m_itemData.m_shared.m_name;
             CurrencyIcon = component.m_itemData.GetIcon();
+            CurrencyPrefab = prefab;
             return true;
         }
 

@@ -18,7 +18,7 @@ public class TreasureFinder : StatusEffect
     
     public float m_updateBeaconTimer;
     public float m_pingTimer;
-    [FormerlySerializedAs("m_beacon")] public Treasure? m_treasure;
+    public Treasure? m_treasure;
     public float m_lastDistance;
 
     public override void Setup(Character character)
@@ -36,23 +36,26 @@ public class TreasureFinder : StatusEffect
 
     public override void UpdateStatusEffect(float dt)
     {
+        if (m_character is null) return;
         m_updateBeaconTimer += dt;
         if (m_updateBeaconTimer > 1.0)
         {
             m_updateBeaconTimer = 0.0f;
-            var closest = Treasure.FindClosestTreasureInRange(m_character.transform.position);
-            if (closest != m_treasure)
+            if (Treasure.FindClosestTreasureInRange(m_character.transform.position) is { } closest)
             {
-                m_treasure = closest;
-                if (m_treasure is not null)
+                if (m_treasure == null || closest != m_treasure)
                 {
-                    m_lastDistance = Utils.DistanceXZ(m_character.transform.position, m_treasure.transform.position);
-                    m_pingTimer = 0.0f;
+                    m_treasure = closest;
+                    if (m_treasure != null)
+                    {
+                        m_lastDistance = Utils.DistanceXZ(m_character.transform.position, m_treasure.transform.position);
+                        m_pingTimer = 0.0f;
+                    }
                 }
             }
         }
 
-        if (m_treasure is null) return;
+        if (m_treasure == null) return;
         var num1 = Utils.DistanceXZ(m_character.transform.position, m_treasure.transform.position);
         var t = Mathf.Clamp01(num1 / m_treasure.m_range);
         var num2 = Mathf.Lerp(m_closeFrequency, m_distantFrequency, t);

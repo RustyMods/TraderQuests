@@ -117,6 +117,7 @@
         <Compile Include="API\AlmanacClassAPI.cs" />
         <Compile Include="API\EpicMMOSystem_API.cs" />
         <Compile Include="Behaviors\Bounty.cs" />
+        <Compile Include="Behaviors\ItemUI.cs" />
         <Compile Include="Behaviors\TraderUI.cs" />
         <Compile Include="Behaviors\Treasure.cs" />
         <Compile Include="Behaviors\TreasureFinder.cs" />
@@ -128,6 +129,7 @@
         <Compile Include="Quest\Effects.cs" />
         <Compile Include="Quest\QuestSystem.cs" />
         <Compile Include="Quest\Shop.cs" />
+        <Compile Include="Quest\TraderOverride.cs" />
         <Compile Include="Quest\TreasureSystem.cs" />
         <Compile Include="translations\Keys.cs" />
         <Compile Include="UI\Assets.cs" />

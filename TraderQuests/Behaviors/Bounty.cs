@@ -1,4 +1,5 @@
 ﻿using System;
+using BepInEx;
 using HarmonyLib;
 using TraderQuests.Quest;
 using UnityEngine;
@@ -29,7 +30,17 @@ public class Bounty : MonoBehaviour
     public void SetData(BountySystem.BountyData bountyData, BountySystem.BountyData.CreatureData creatureData)
     {
         SetHunter(Player.m_localPlayer.GetPlayerID());
-        SetNameOverride(creatureData.Config.OverrideName);
+        if (creatureData.Config.OverrideName.IsNullOrWhiteSpace())
+        {
+            if (!creatureData.Config.IsBoss)
+            {
+                SetNameOverride(m_character.m_name + " Minion");
+            }
+        }
+        else
+        {
+            SetNameOverride(creatureData.Config.OverrideName);
+        }
         SetBoss(creatureData.Config.IsBoss);
         SetIconPrefab(bountyData.Config.IconPrefab);
         SetRecordID($"{creatureData.BountyID}:{creatureData.Config.UniqueID}");
@@ -69,13 +80,10 @@ public class Bounty : MonoBehaviour
 
     public void AddPin()
     {
-        var pin = Minimap.instance.AddPin(transform.position, Minimap.PinType.Boss, m_name, false, false);
-        if (ObjectDB.instance.GetItemPrefab(m_iconPrefab) is { } iconPrefab && iconPrefab.TryGetComponent(out ItemDrop component))
-        {
-            pin.m_icon = component.m_itemData.GetIcon();
-        }
-
+        var pin = Minimap.instance.AddPin(transform.position, Minimap.PinType.RandomEvent, m_name, false, false);
         m_pin = pin;
+        m_pin.m_doubleSize = true;
+        m_pin.m_animate = true;
     }
 
     public void Update()

@@ -51,6 +51,8 @@ namespace TraderQuests
         public static ConfigEntry<int> MaxSaleItems = null!;
         public static ConfigEntry<Traders> AffectedTraders = null!;
         public static ConfigEntry<string> CustomTrader = null!;
+        public static ConfigEntry<Toggle> OverrideStore = null!;
+
         public BountySystem.BountyData? QueuedBountyData;
 
         public enum Traders
@@ -67,7 +69,7 @@ namespace TraderQuests
 
             PanelPosition = config("2 - Settings", "Position", new Vector2(-100f, 50f), new ConfigDescription("Set position of panel", null, new ConfigurationManagerAttributes()
             {
-                Order = 0
+                Order = 3
             }));
             PanelPosition.SettingChanged += (_, _) =>
             {
@@ -76,7 +78,7 @@ namespace TraderQuests
             };
             Font = config("2 - Settings", "Font", TraderUI.FontOptions.AveriaSerifLibre, new ConfigDescription("Font options", null, new ConfigurationManagerAttributes()
             {
-                Order = 1,
+                Order = 2,
             }));
             Font.SettingChanged += (_, _) =>
             {
@@ -85,9 +87,13 @@ namespace TraderQuests
             };
             AffectedTraders = config("2 - Settings", "Trader", Traders.All, new ConfigDescription("Traders that have access to panel", null, new ConfigurationManagerAttributes()
             {
-                Order = 2
+                Order = 1
             }));
-            CustomTrader = config("2 - Settings", "Custom Trader", "TravelingHaldor", "Add prefab name of custom trader to have access to panel");
+            CustomTrader = config("2 - Settings", "Custom Trader", "TravelingHaldor", new ConfigDescription("Add prefab name of custom trader to have access to panel", null, new ConfigurationManagerAttributes()
+            {
+                Order = 0
+            }));
+            OverrideStore = config("2 - Settings", "Override Trader", Toggle.Off, "If on, vanilla store will use loaded YML data");
             
             BountyCooldown = config("Bounty", "Cooldown", 60.0, "Set duration between new bounties, in minutes");
             MaxBountyDisplayed = config("Bounty", "Max Available", 10, "Set max amount of available bounties displayed");
@@ -116,6 +122,7 @@ namespace TraderQuests
             TreasureSystem.Init();
             BountySystem.Init();
             Shop.Init();
+            TraderOverride.LoadFiles();
 
             Item TraderToken = new Item(Assets, "TraderCoin_RS");
             TraderToken.Name.English("Trader Token");

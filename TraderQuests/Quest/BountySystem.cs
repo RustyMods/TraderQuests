@@ -10,7 +10,6 @@ using TraderQuests.API;
 using TraderQuests.Behaviors;
 using TraderQuests.translations;
 using UnityEngine;
-using UnityEngine.UI;
 using YamlDotNet.Serialization;
 using Object = UnityEngine.Object;
 using Random = UnityEngine.Random;
@@ -29,9 +28,9 @@ public static class BountySystem
     public static BountyData? SelectedBounty;
     public static BountyData? SelectedActiveBounty;
     private static readonly Dictionary<string, BountyData> AllBounties = new();
-    public static Dictionary<string, BountyData> AvailableBounties = new();
+    private static Dictionary<string, BountyData> AvailableBounties = new();
     public static readonly Dictionary<string, BountyData> ActiveBounties = new();
-    public static Dictionary<string, long> CompletedBounties = new();
+    private static Dictionary<string, long> CompletedBounties = new();
     private static readonly List<BountyData> CurrentBounties = new();
 
     private static double LastLoadedTime;
@@ -204,7 +203,7 @@ public static class BountySystem
         if (CurrentBounties.Count <= 0 || LastLoadedTime == 0.0 || ZNet.m_instance.GetTimeSeconds() - LastLoadedTime > TraderQuestsPlugin.BountyCooldown.Value * 60)
         {
             CurrentBounties.Clear();
-            List<BountyData> bounties = AvailableBounties.Values.ToList();
+            List<BountyData> bounties = AvailableBounties.Values.Where(bounty => bounty.HasRequiredKey()).ToList();
             for (int index = 0; index < TraderQuestsPlugin.MaxBountyDisplayed.Value; ++index)
             {
                 if (GetRandomWeightedBounty(bounties) is not { } bounty) continue;
@@ -256,52 +255,21 @@ public static class BountySystem
     
     private static void SetupItem(GameObject item, BountyData data, bool active)
     {
+        if (!item.TryGetComponent(out ItemUI component)) return;
         bool enable = data.HasRequirements();
-        Text name = Utils.FindChild(item.transform, "$text_name").GetComponent<Text>();
-        name.text = data.Config.Name;
-        name.color = enable ? new Color32(255, 255, 255, 255) : new Color32(150, 150, 150, 255);
-        Image icon = Utils.FindChild(item.transform, "$image_icon").GetComponent<Image>();
-        icon.sprite = data.Icon;
-        icon.color = enable ? Color.white : Color.gray;
-        Image currency = Utils.FindChild(item.transform, "$image_currency").GetComponent<Image>();
-        currency.sprite = data.CurrencyIcon;
-        currency.color = enable ? Color.white : Color.gray;
-        Text currencyText = Utils.FindChild(item.transform, "$text_currency").GetComponent<Text>();
-        currencyText.text = data.Config.Price.ToString();
-        currencyText.color = enable ? new Color32(255, 164, 0, 255) : new Color32(150, 150, 150, 255);
-        Transform selected = item.transform.Find("$image_selected");
-        selected.GetComponent<Image>().color = enable ? new Color32(255, 164, 0, 255) : new Color32(255, 164, 0, 200);
         
-        item.GetComponent<Button>().onClick.AddListener(() =>
-        {
-            TraderUI.m_instance.DeselectAll();
-            selected.gameObject.SetActive(true);
-            TraderUI.m_instance.SetSelectionButtons(Keys.Select, Keys.Cancel);
-            if (active)
-            {
-                TraderUI.m_instance.SetSelectionButtons(Keys.Select, data.Completed ? Keys.Collect : Keys.Cancel);
-                SelectedActiveBounty = data;
-            }
-            else
-            {
-                if (!QuestSystem.FindSpawnLocation(data.Biome, out Vector3 position))
-                {
-                    Player.m_localPlayer.Message(MessageHud.MessageType.Center, "Failed to generate spawn location");
-                    return;
-                }
-                data.Position = position;
-                SelectedBounty = data;
-                TreasureSystem.SelectedTreasure = null;
-                TraderUI.m_instance.m_selectButtonText.color = enable ? new Color32(255, 164, 0, 255) : Color.gray;
-            }
-            TraderUI.m_instance.SetTooltip(data.GetTooltip());
-        });
+        component.SetName(data.Config.Name, enable);
+        component.SetIcon(data.Icon, enable);
+        component.SetCurrency(data.CurrencyIcon, enable);
+        component.SetPrice(data.Config.Price.ToString(), enable);
+        component.SetSelected(enable);
+        component.m_button.onClick.AddListener(() => data.OnSelected(component, enable, active));
     }
-
     private static List<BountyConfig> GetDefaultBounties()
     {
         return new List<BountyConfig>()
         {
+            // 1. Meadows - Neck Bounty (Easy)
             new BountyConfig()
             {
                 UniqueID = "NeckBounty.0001",
@@ -314,41 +282,240 @@ public static class BountySystem
                 Cooldown = 1000f,
                 Creatures = new List<BountyConfig.CreatureConfig>()
                 {
-                    new BountyConfig.CreatureConfig()
-                    {
-                        UniqueID = "NeckBoss",
-                        PrefabName = "Neck",
-                        OverrideName = "Nekken",
-                        Level = 3,
-                        IsBoss = true
-                    },
-                    new()
-                    {
-                        UniqueID = "NeckMinion.0001",
-                        PrefabName = "Neck",
-                        OverrideName = "Nekken Minion",
-                        Level = 1,
-                    },
-                    new()
-                    {
-                        UniqueID = "NeckMinion.0002",
-                        PrefabName = "Neck",
-                        OverrideName = "Nekken Minion",
-                        Level = 1,
-                    }
+                    new() { UniqueID = "NeckBoss", PrefabName = "Neck", OverrideName = "Nekken", Level = 3, IsBoss = true },
+                    new() { UniqueID = "NeckMinion.0001", PrefabName = "Neck", OverrideName = "Nekken Minion", Level = 1 },
+                    new() { UniqueID = "NeckMinion.0002", PrefabName = "Neck", OverrideName = "Nekken Minion", Level = 1 }
                 },
                 Rewards = new List<BountyConfig.RewardConfig>()
                 {
-                    new()
-                    {
-                        PrefabName = "Coins",
-                        Amount = 50
-                    },
+                    new() { PrefabName = "Coins", Amount = 50 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 1 }
+                }
+            },
+
+            // 2. Black Forest - Greydwarf Shaman Hunt
+            new BountyConfig()
+            {
+                UniqueID = "ShamanBounty.0001",
+                Name = "Forest Corruption",
+                CurrencyItem = "Coins",
+                Price = 20,
+                IconPrefab = "TrophyGreydwarfShaman",
+                Biome = "BlackForest",
+                RequiredKey = "defeated_gdking",
+                Cooldown = 1200f,
+                Creatures = new List<BountyConfig.CreatureConfig>()
+                {
+                    new() { UniqueID = "ShamanBoss", PrefabName = "Greydwarf_Shaman", OverrideName = "Corrupted Shaman", Level = 2, IsBoss = true },
+                    new() { UniqueID = "Greydwarf.0001", PrefabName = "Greydwarf", Level = 1 },
+                    new() { UniqueID = "Greydwarf.0002", PrefabName = "Greydwarf", Level = 1 }
+                },
+                Rewards = new List<BountyConfig.RewardConfig>()
+                {
+                    new() { PrefabName = "Coins", Amount = 75 },
+                    new() { PrefabName = "Resin", Amount = 10 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 2 }
+                }
+            },
+
+            // 3. Swamp - Draugr Invasion
+            new BountyConfig()
+            {
+                UniqueID = "DraugrBounty.0001",
+                Name = "The Rotting Horde",
+                CurrencyItem = "Coins",
+                Price = 40,
+                IconPrefab = "TrophyDraugr",
+                Biome = "Swamp",
+                RequiredKey = "defeated_bonemass",
+                Cooldown = 1500f,
+                Creatures = new List<BountyConfig.CreatureConfig>()
+                {
+                    new() { UniqueID = "DraugrBoss", PrefabName = "Draugr_Elite", OverrideName = "Draugr Warlord", Level = 3, IsBoss = true },
+                    new() { UniqueID = "DraugrMinion.0001", PrefabName = "Draugr", Level = 2 },
+                    new() { UniqueID = "DraugrMinion.0002", PrefabName = "Draugr", Level = 2 },
+                    new() { UniqueID = "DraugrArcher.0003", PrefabName = "Draugr_Ranged", Level = 2 }
+                },
+                Rewards = new List<BountyConfig.RewardConfig>()
+                {
+                    new() { PrefabName = "Coins", Amount = 150 },
+                    new() { PrefabName = "WitheredBone", Amount = 3 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 3 }
+                }
+            },
+
+            // 4. Mountains - Fenring Stalker
+            new BountyConfig()
+            {
+                UniqueID = "FenringBounty.0001",
+                Name = "The Howling Nightmare",
+                CurrencyItem = "Coins",
+                Price = 75,
+                IconPrefab = "TrophyFenring",
+                Biome = "Mountain",
+                RequiredKey = "defeated_dragon",
+                Cooldown = 1800f,
+                Creatures = new List<BountyConfig.CreatureConfig>()
+                {
+                    new() { UniqueID = "FenringAlpha", PrefabName = "Fenring", OverrideName = "Alpha Fenring", Level = 3, IsBoss = true },
+                    new() { UniqueID = "FenringMinion.0001", PrefabName = "Fenring", Level = 2 },
+                    new() { UniqueID = "FenringMinion.0002", PrefabName = "Fenring", Level = 2 }
+                },
+                Rewards = new List<BountyConfig.RewardConfig>()
+                {
+                    new() { PrefabName = "Coins", Amount = 250 },
+                    new() { PrefabName = "WolfPelt", Amount = 5 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 3 }
+                }
+            },
+
+            // 5. Plains - Fulings’ Warband
+            new BountyConfig()
+            {
+                UniqueID = "FulingBounty.0001",
+                Name = "Plains Warlords",
+                CurrencyItem = "Coins",
+                Price = 120,
+                IconPrefab = "TrophyGoblinBrute",
+                Biome = "Plains",
+                RequiredKey = "defeated_yagluth",
+                Cooldown = 2000f,
+                Creatures = new List<BountyConfig.CreatureConfig>()
+                {
+                    new() { UniqueID = "FulingBerserkerBoss", PrefabName = "GoblinBrute", OverrideName = "Berserker Warchief", Level = 3, IsBoss = true },
+                    new() { UniqueID = "FulingWarrior.0001", PrefabName = "Goblin", Level = 3 },
+                    new() { UniqueID = "FulingWarrior.0002", PrefabName = "Goblin", Level = 3 },
+                    new() { UniqueID = "FulingShaman.0003", PrefabName = "GoblinShaman", Level = 3 }
+                },
+                Rewards = new List<BountyConfig.RewardConfig>()
+                {
+                    new() { PrefabName = "Coins", Amount = 400 },
+                    new() { PrefabName = "BlackMetalScrap", Amount = 10 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 4 }
+                }
+            },
+            // 6. Ocean - Serpent Hunt
+            new BountyConfig()
+            {
+                UniqueID = "SerpentBounty.0001",
+                Name = "The Deep Terror",
+                CurrencyItem = "Coins",
+                Price = 200,
+                IconPrefab = "TrophySerpent",
+                Biome = "Ocean",
+                RequiredKey = "defeated_bonemass",
+                Cooldown = 2500f,
+                Creatures = new List<BountyConfig.CreatureConfig>()
+                {
+                    new() { UniqueID = "SerpentBoss", PrefabName = "Serpent", OverrideName = "Leviathan Serpent", Level = 3, IsBoss = true }
+                },
+                Rewards = new List<BountyConfig.RewardConfig>()
+                {
+                    new() { PrefabName = "Coins", Amount = 500 },
+                    new() { PrefabName = "SerpentMeat", Amount = 5 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 2 }
+                }
+            },
+
+            // 7. Mistlands - Seeker Swarm
+            new BountyConfig()
+            {
+                UniqueID = "SeekerBounty.0001",
+                Name = "The Crawling Nightmare",
+                CurrencyItem = "Coins",
+                Price = 250,
+                IconPrefab = "TrophySeeker",
+                Biome = "Mistlands",
+                RequiredKey = "defeated_queen",
+                Cooldown = 3000f,
+                Creatures = new List<BountyConfig.CreatureConfig>()
+                {
+                    new() { UniqueID = "SeekerBoss", PrefabName = "SeekerBrute", OverrideName = "Seeker Prime", Level = 3, IsBoss = true },
+                    new() { UniqueID = "SeekerMinion.0001", PrefabName = "Seeker", Level = 2 },
+                    new() { UniqueID = "SeekerMinion.0002", PrefabName = "Seeker", Level = 2 }
+                },
+                Rewards = new List<BountyConfig.RewardConfig>()
+                {
+                    new() { PrefabName = "Coins", Amount = 600 },
+                    new() { PrefabName = "RoyalJelly", Amount = 5 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 5 }
+                }
+            },
+
+            // 8. Swamp - Surtling Overlord
+            new BountyConfig()
+            {
+                UniqueID = "SurtlingBounty.0001",
+                Name = "The Fireborn Tyrant",
+                CurrencyItem = "Coins",
+                Price = 300,
+                IconPrefab = "TrophySurtling",
+                Biome = "Swamp",
+                RequiredKey = "defeated_bonemass",
+                Cooldown = 3500f,
+                Creatures = new List<BountyConfig.CreatureConfig>()
+                {
+                    new() { UniqueID = "SurtlingBoss", PrefabName = "Surtling", OverrideName = "Inferno Lord", Level = 3, IsBoss = true },
+                    new() { UniqueID = "SurtlingMinion.0001", PrefabName = "Surtling", Level = 2 },
+                    new() { UniqueID = "SurtlingMinion.0002", PrefabName = "Surtling", Level = 2 }
+                },
+                Rewards = new List<BountyConfig.RewardConfig>()
+                {
+                    new() { PrefabName = "Coins", Amount = 700 },
+                    new() { PrefabName = "Coal", Amount = 20 },
+                    new() { PrefabName = "SurtlingCore", Amount = 3 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 3 }
+                }
+            },
+
+            // 9. Deep North - Ice Golem Onslaught
+            new BountyConfig()
+            {
+                UniqueID = "IceGolemBounty.0001",
+                Name = "Frozen Colossus",
+                CurrencyItem = "Coins",
+                Price = 350,
+                IconPrefab = "TrophySGolem",
+                Biome = "DeepNorth",
+                RequiredKey = "defeated_queen",
+                Cooldown = 4000f,
+                Creatures = new List<BountyConfig.CreatureConfig>()
+                {
+                    new() { UniqueID = "IceGolemBoss", PrefabName = "StoneGolem", OverrideName = "Frost Titan", Level = 3, IsBoss = true },
+                    new() { UniqueID = "IceGolemMinion.0001", PrefabName = "StoneGolem", Level = 2 }
+                },
+                Rewards = new List<BountyConfig.RewardConfig>()
+                {
+                    new() { PrefabName = "Coins", Amount = 800 },
+                    new() { PrefabName = "Crystal", Amount = 5 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 4 }
+                }
+            },
+
+            // 10. Swamp - Abomination Slaughter
+            new BountyConfig()
+            {
+                UniqueID = "AbominationBounty.0001",
+                Name = "The Swamp Horror",
+                CurrencyItem = "Coins",
+                Price = 180,
+                IconPrefab = "TrophyAbomination",
+                Biome = "Swamp",
+                RequiredKey = "defeated_bonemass",
+                Cooldown = 2500f,
+                Creatures = new List<BountyConfig.CreatureConfig>()
+                {
+                    new() { UniqueID = "AbominationBoss", PrefabName = "Abomination", OverrideName = "Ancient Horror", Level = 3, IsBoss = true }
+                },
+                Rewards = new List<BountyConfig.RewardConfig>()
+                {
+                    new() { PrefabName = "Coins", Amount = 500 },
+                    new() { PrefabName = "Root", Amount = 10 },
+                    new() { PrefabName = "TraderCoin_RS", Amount = 3 }
                 }
             }
         };
     }
-
     public static void RecordKill(string recordID, long playerID)
     {
         if (!ZNet.m_instance.IsServer())
@@ -376,7 +543,6 @@ public static class BountySystem
             UpdateRecordFile(true);
         }
     }
-
     public static void RemoveRecord(long playerID, string recordID)
     {
         if (ZNet.m_instance.IsServer())
@@ -394,7 +560,6 @@ public static class BountySystem
             server.m_rpc.Invoke(nameof(QuestSystem.RPC_RemoveRecord), pkg);
         }
     }
-
     public static void SetupSync()
     {
         ServerKillRecord.ValueChanged += () =>
@@ -405,7 +570,6 @@ public static class BountySystem
             CheckRecord(data);
         };
     }
-
     private static void UpdateRecordFile(bool sync)
     {
         var serializer = new SerializerBuilder().Build();
@@ -417,7 +581,6 @@ public static class BountySystem
             ServerKillRecord.Value = data;
         }
     }
-
     private static void CheckRecord(Dictionary<long, List<string>> data)
     {
         if (ActiveBounties.Count <= 0) return;
@@ -448,7 +611,6 @@ public static class BountySystem
             bounty.SetCompleted(true, DateTime.Now.Ticks);
         }
     }
-
     private static void UpdateServerRecord(string RecordID)
     {
         if (ZNet.m_instance.IsServer())
@@ -463,7 +625,6 @@ public static class BountySystem
             server.m_rpc.Invoke(nameof(QuestSystem.RPC_RemoveRecord), pkg);
         }
     }
-
     public static void SaveToPlayer()
     {
         if (!Player.m_localPlayer) return;
@@ -484,7 +645,6 @@ public static class BountySystem
             Player.m_localPlayer.m_customData["CompletedBounties"] = serializer.Serialize(CompletedBounties);
         }
     }
-
     private static void LoadPlayerData()
     {
         if (!Player.m_localPlayer) return;
@@ -553,25 +713,52 @@ public static class BountySystem
             public int Quality;
         }
     }
-
     public class BountyData
     {
         public readonly BountyConfig Config;
         public bool IsValid = true;
+        private GameObject CurrencyPrefab = null!;
         private string CurrencySharedName = "";
-        public Heightmap.Biome Biome = Heightmap.Biome.Meadows;
-        public Sprite? Icon;
-        public Sprite? CurrencyIcon;
+        private Heightmap.Biome Biome = Heightmap.Biome.Meadows;
+        public Sprite Icon = null!;
+        public Sprite CurrencyIcon = null!;
         public Vector3 Position = Vector3.zero;
         public Minimap.PinData? PinData;
         public readonly Dictionary<string, CreatureData> Creatures = new();
-        public readonly List<RewardData> Rewards = new();
+        private readonly List<RewardData> Rewards = new();
         public int KilledCreatureCount;
-        public bool Completed;
+        private bool Completed;
         public bool Spawned;
-        public long CompletedOn;
-
+        private long CompletedOn;
         public BountyData(BountyConfig config) => Config = config;
+
+        public void OnSelected(ItemUI component, bool enable, bool active)
+        {
+            TraderUI.m_instance.DeselectAll();
+            TraderUI.m_instance.SetDefaultButtonTextColor();
+            component.OnSelected(true);
+            TraderUI.m_instance.SetSelectionButtons(Keys.Select, Keys.Cancel);
+            if (active)
+            {
+                TraderUI.m_instance.SetSelectionButtons(Keys.Select, Completed ? Keys.Collect : Keys.Cancel);
+                SelectedActiveBounty = this;
+            }
+            else
+            {
+                if (!QuestSystem.FindSpawnLocation(Biome, out Vector3 position))
+                {
+                    Player.m_localPlayer.Message(MessageHud.MessageType.Center, "Failed to generate spawn location");
+                    return;
+                }
+                Position = position;
+                SelectedBounty = this;
+                TreasureSystem.SelectedTreasure = null;
+                TraderUI.m_instance.m_selectButtonText.color = enable ? new Color32(255, 164, 0, 255) : Color.gray;
+            }
+            TraderUI.m_instance.SetTooltip(GetTooltip());
+            TraderUI.m_instance.SetCurrencyIcon(CurrencyIcon);
+            TraderUI.m_instance.SetCurrentCurrency(Player.m_localPlayer.GetInventory().CountItems(CurrencySharedName).ToString());
+        }
 
         public void CollectReward(Player player)
         {
@@ -606,6 +793,9 @@ public static class BountySystem
             {
                 EpicMMOSystemAPI.AddExp(Config.EpicMMOExp);
             }
+
+            CompletedBounties[Config.UniqueID] = CompletedOn;
+            ActiveBounties.Remove(Config.UniqueID);
         }
 
         public void SetCompleted(bool completed, long timeCompleted)
@@ -618,20 +808,20 @@ public static class BountySystem
 
         public bool CooldownPassed() => DateTime.Now.Ticks > Config.Cooldown + CompletedOn;
 
-        public string GetTooltip()
+        private string GetTooltip()
         {
             StringBuilder stringBuilder = new StringBuilder();
             stringBuilder.Append($"\n<color=yellow>{Config.Name}</color>\n\n");
-            stringBuilder.Append($"{Keys.Location}: {Biome}\n");
-            stringBuilder.Append($"{Keys.Distance}: {Mathf.FloorToInt(Vector3.Distance(Player.m_localPlayer.transform.position, Position))}\n");
-            stringBuilder.Append($"{Keys.Rewards}:\n");
+            stringBuilder.Append($"{Keys.Location}: <color=orange>{Biome}</color>\n");
+            stringBuilder.Append($"{Keys.Distance}: <color=orange>{Mathf.FloorToInt(Vector3.Distance(Player.m_localPlayer.transform.position, Position))}</color>\n");
+            stringBuilder.Append($"<color=orange>{Keys.Rewards}:</color>\n");
             if (AlmanacClassAPI.installed && Config.AlmanacExp > 0)
             {
-                stringBuilder.Append($"{Keys.AlmanacExp}: {Config.AlmanacExp}");
+                stringBuilder.Append($"{Keys.AlmanacExp}: <color=orange>{Config.AlmanacExp}</color>");
             }
             if (EpicMMOSystemAPI.state is EpicMMOSystemAPI.API_State.Ready && Config.EpicMMOExp > 0)
             {
-                stringBuilder.Append($"{Keys.EpicMMOExp}: {Config.EpicMMOExp}");
+                stringBuilder.Append($"{Keys.EpicMMOExp}: <color=orange>{Config.EpicMMOExp}</color>");
             }
             foreach (RewardData reward in Rewards)
             {
@@ -703,6 +893,7 @@ public static class BountySystem
             }
             CurrencyIcon = component.m_itemData.GetIcon();
             CurrencySharedName = component.m_itemData.m_shared.m_name;
+            CurrencyPrefab = prefab;
             return true;
 
         }
@@ -722,11 +913,29 @@ public static class BountySystem
         public bool HasRequirements()
         {
             if (!Player.m_localPlayer) return false;
-            if (!Config.RequiredKey.IsNullOrWhiteSpace() && !Player.m_localPlayer.HaveUniqueKey(Config.RequiredKey)) return false;
+            if (!HasRequiredKey()) return false;
             if (ActiveBounties.Count >= TraderQuestsPlugin.MaxActiveBounties.Value) return false;
             return Player.m_localPlayer.GetInventory().CountItems(CurrencySharedName) >= Config.Price;
         }
 
+        public bool HasRequiredKey()
+        {
+            if (Config.RequiredKey.IsNullOrWhiteSpace()) return true;
+            return Player.m_localPlayer.HaveUniqueKey(Config.RequiredKey);
+        }
+
+        public bool Deactivate(bool returnCost)
+        {
+            if (returnCost)
+            {
+                if (!Player.m_localPlayer.GetInventory().HaveEmptySlot()) return false;
+                if (!Player.m_localPlayer.GetInventory().AddItem(CurrencyPrefab, Config.Price)) return false;
+            }
+            AvailableBounties[Config.UniqueID] = this;
+            CurrentBounties.Add(this);
+            ActiveBounties.Remove(Config.UniqueID);
+            return true;
+        }
         public bool Activate(bool checkRequirements = true)
         {
             if (checkRequirements && !HasRequirements())
@@ -736,6 +945,7 @@ public static class BountySystem
             }
 
             AvailableBounties.Remove(Config.UniqueID);
+            CurrentBounties.Remove(this);
             ActiveBounties[Config.UniqueID] = this;
             SelectedBounty = null;
             UpdateMinimap();
@@ -780,7 +990,7 @@ public static class BountySystem
             }
         }
 
-        public class RewardData
+        private class RewardData
         {
             public readonly BountyConfig.RewardConfig Config;
             public bool IsValid = true;

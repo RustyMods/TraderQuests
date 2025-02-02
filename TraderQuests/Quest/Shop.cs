@@ -9,7 +9,6 @@ using ServerSync;
 using TraderQuests.Behaviors;
 using TraderQuests.translations;
 using UnityEngine;
-using UnityEngine.UI;
 using YamlDotNet.Serialization;
 using Random = UnityEngine.Random;
 
@@ -27,7 +26,6 @@ public static class Shop
     private static double LastLoadedTime;
     private static List<StoreItem> AvailableItems = new();
     private static List<StoreItem> OnSaleItems = new();
-
     public static void Init()
     {
         if (!Directory.Exists(TraderQuestsPlugin.FolderPath)) Directory.CreateDirectory(TraderQuestsPlugin.FolderPath);
@@ -53,8 +51,6 @@ public static class Shop
                 try
                 {
                     Configs.Add(deserializer.Deserialize<ItemConfig>(File.ReadAllText(file)));
-                    LastLoadedTime = 0.0;
-                    SetupStore();
                 }
                 catch
                 {
@@ -73,6 +69,8 @@ public static class Shop
             {
                 Configs = deserializer.Deserialize<List<ItemConfig>>(ServerStore.Value);
                 Configs.Add(GetTraderRingConfig());
+                LastLoadedTime = 0.0;
+                SetupStore();
             }
             catch
             {
@@ -80,14 +78,12 @@ public static class Shop
             }
         };
     }
-
     public static void UpdateServerStore()
     {
         if (Configs.Count <= 0) return;
         var serializer = new SerializerBuilder().Build();
         ServerStore.Value = serializer.Serialize(Configs);
     }
-
     private static ItemConfig GetTraderRingConfig()
     {
         return new ItemConfig()
@@ -100,7 +96,6 @@ public static class Shop
             Weight = 0.1f
         };
     }
-
     private static void SetupStore()
     {
         foreach (var config in Configs)
@@ -111,18 +106,18 @@ public static class Shop
             AllItems.Add(item);
         }
     }
-
     private static List<ItemConfig> LoadDefaults()
     {
         return new()
         {
+            // Bronze Tier Weapons
             new ItemConfig()
             {
                 PrefabName = "SwordBronze",
                 Stack = 1,
                 Quality = 2,
                 CurrencyPrefab = "TraderCoin_RS",
-                Price = 5,
+                Price = 10,
                 RequiredKey = "defeated_eikthyr"
             },
             new ItemConfig()
@@ -131,7 +126,7 @@ public static class Shop
                 Stack = 1,
                 Quality = 2,
                 CurrencyPrefab = "TraderCoin_RS",
-                Price = 5,
+                Price = 12,
                 RequiredKey = "defeated_eikthyr"
             },
             new ItemConfig()
@@ -140,27 +135,111 @@ public static class Shop
                 Stack = 1,
                 Quality = 2,
                 CurrencyPrefab = "TraderCoin_RS",
-                Price = 5,
+                Price = 15,
+                RequiredKey = "defeated_eikthyr"
+            },
+
+            // Bronze Tier Armor
+            new ItemConfig()
+            {
+                PrefabName = "HelmetBronze",
+                Stack = 1,
+                Quality = 2,
+                CurrencyPrefab = "TraderCoin_RS",
+                Price = 8,
                 RequiredKey = "defeated_eikthyr"
             },
             new ItemConfig()
             {
-                PrefabName = "AtgeirBronze",
+                PrefabName = "ArmorBronzeChest",
                 Stack = 1,
                 Quality = 2,
                 CurrencyPrefab = "TraderCoin_RS",
-                Price = 5,
+                Price = 15,
                 RequiredKey = "defeated_eikthyr"
             },
+
+            // Consumables & Special Items
+            new ItemConfig()
+            {
+                PrefabName = "MeadHealthMinor",
+                Stack = 10,
+                Quality = 1,
+                CurrencyPrefab = "TraderCoin_RS",
+                Price = 3,
+                RequiredKey = "defeated_eikthyr"
+            },
+            new ItemConfig()
+            {
+                PrefabName = "ArrowFire",
+                Stack = 20,
+                Quality = 1,
+                CurrencyPrefab = "TraderCoin_RS",
+                Price = 1,
+                RequiredKey = "defeated_eikthyr"
+            },
+
+            // Unique / Special Items
+            new ItemConfig()
+            {
+                PrefabName = "DragonEgg",
+                Stack = 3,
+                Quality = 1,
+                CurrencyPrefab = "TraderCoin_RS",
+                Price = 50,
+                CanBeOnSale = false,
+                RequiredKey = "defeated_dragon"
+            },
+
+            // Rare Tier Weapons
+            new ItemConfig()
+            {
+                PrefabName = "SwordSilver",
+                Stack = 1,
+                Quality = 3,
+                CurrencyPrefab = "TraderCoin_RS",
+                Price = 50,
+                RequiredKey = "defeated_bonemass"
+            },
+
+            // Special Consumables
+            new ItemConfig()
+            {
+                PrefabName = "MeadFrostResist",
+                Stack = 10,
+                Quality = 1,
+                CurrencyPrefab = "TraderCoin_RS",
+                Price = 25,
+                RequiredKey = "defeated_bonemass"
+            },
+
+            // Rare Tier Armor
+            new ItemConfig()
+            {
+                PrefabName = "HelmetDrake",
+                Stack = 1,
+                Quality = 3,
+                CurrencyPrefab = "TraderCoin_RS",
+                Price = 30,
+                RequiredKey = "defeated_bonemass"
+            },
+            new ItemConfig()
+            {
+                PrefabName = "ArmorWolfChest",
+                Stack = 1,
+                Quality = 3,
+                CurrencyPrefab = "TraderCoin_RS",
+                Price = 60,
+                RequiredKey = "defeated_bonemass"
+            }
         };
     }
-
     public static void LoadAvailable()
     {
         if (!TraderUI.m_instance || TraderUI.m_item is null || !ZNet.m_instance) return;
         if (LastLoadedTime == 0.0 || ZNet.m_instance.GetTimeSeconds() - LastLoadedTime > TraderQuestsPlugin.ShopCooldown.Value * 60)
         {
-            List<StoreItem> storeItems = new(AllItems);
+            List<StoreItem> storeItems = AllItems.Where(item => item.HasRequiredKey()).ToList();
             List<StoreItem> items = new List<StoreItem>();
             List<StoreItem> saleItems = new List<StoreItem>();
 
@@ -199,7 +278,6 @@ public static class Shop
         }
         TraderUI.m_instance.ResizeActiveListRoot(OnSaleItems.Count);
     }
-
     private static StoreItem? GetRandomWeightedItem(List<StoreItem> data)
     {
         if (data.Count <= 0) return null;
@@ -220,44 +298,17 @@ public static class Shop
 
         return data[Random.Range(0, data.Count)];
     }
-
     private static void SetupItem(GameObject item, StoreItem data, bool onSale)
     {
+        if (!item.TryGetComponent(out ItemUI component)) return;
         bool enable = data.HasRequirements(onSale);
-        Text name = Utils.FindChild(item.transform, "$text_name").GetComponent<Text>();
-        name.text = Localization.instance.Localize(data.SharedName);
-        name.color = enable ? new Color32(255, 255, 255, 255) : new Color32(150, 150, 150, 255);
-        Image icon = Utils.FindChild(item.transform, "$image_icon").GetComponent<Image>();
-        icon.sprite = data.Icon;
-        icon.color = enable ? Color.white : Color.gray;
-        Image currency = Utils.FindChild(item.transform, "$image_currency").GetComponent<Image>();
-        currency.sprite = data.CurrencyIcon;
-        currency.color = enable ? Color.white : Color.gray;
-        Text currencyText = Utils.FindChild(item.transform, "$text_currency").GetComponent<Text>();
-        currencyText.text = onSale ? data.Config.OnSalePrice.ToString() : data.Config.Price.ToString();
-        currencyText.color = enable ? new Color32(255, 164, 0, 255) : new Color32(150, 150, 150, 255);
-        Transform selected = item.transform.Find("$image_selected");
-        selected.GetComponent<Image>().color = enable ? new Color32(255, 164, 0, 255) : new Color32(255, 164, 0, 200);
         
-        item.GetComponent<Button>().onClick.AddListener(() =>
-        {
-            TraderUI.m_instance.DeselectAll();
-            selected.gameObject.SetActive(true);
-            if (onSale)
-            {
-                SelectedSaleItem = data;
-                SelectedItem = null;
-                TraderUI.m_instance.SetSelectionButtons(Keys.Select, Keys.Buy);
-            }
-            else
-            {
-                SelectedItem = data;
-                SelectedSaleItem = null;
-                TraderUI.m_instance.SetSelectionButtons(Keys.Buy, Keys.Select);
-            }
-            
-            TraderUI.m_instance.SetTooltip(data.GetTooltip());
-        });
+        component.SetName(enable ? data.SharedName + " x" + data.Config.Stack : data.SharedName, enable);
+        component.SetIcon(data.Icon, enable);
+        component.SetCurrency(data.CurrencyIcon, enable);
+        component.SetPrice(onSale ? data.Config.OnSalePrice.ToString() : data.Config.Price.ToString(), enable);
+        component.SetSelected(enable);
+        component.m_button.onClick.AddListener(() => data.OnSelect(component, enable, onSale));
     }
 
     public class StoreItem
@@ -276,14 +327,44 @@ public static class Shop
             if (!GetCurrency()) IsValid = false;
         }
 
+        public void OnSelect(ItemUI component, bool enable, bool onSale)
+        {
+            TraderUI.m_instance.DeselectAll();
+            TraderUI.m_instance.SetDefaultButtonTextColor();
+            component.OnSelected(true);
+            if (onSale)
+            {
+                SelectedSaleItem = this;
+                SelectedItem = null;
+                TraderUI.m_instance.SetSelectionButtons(Keys.Select, Keys.Buy);
+                TraderUI.m_instance.m_cancelButtonText.color = enable ? new Color32(255, 164, 0, 255) : Color.gray;
+            }
+            else
+            {
+                SelectedItem = this;
+                SelectedSaleItem = null;
+                TraderUI.m_instance.SetSelectionButtons(Keys.Buy, Keys.Select);
+                TraderUI.m_instance.m_selectButtonText.color = enable ? new Color32(255, 164, 0, 255) : Color.gray;
+            }
+            TraderUI.m_instance.SetTooltip(GetTooltip());
+            TraderUI.m_instance.SetCurrencyIcon(CurrencyIcon);
+            TraderUI.m_instance.SetCurrentCurrency(Player.m_localPlayer.GetInventory().CountItems(CurrencySharedName).ToString());
+        }
+
         public bool HasRequirements(bool onSale)
         {
-            if (!Config.RequiredKey.IsNullOrWhiteSpace() && !Player.m_localPlayer.HaveUniqueKey(Config.RequiredKey)) return false;
+            if (!HasRequiredKey()) return false;
             if (onSale) return Player.m_localPlayer.GetInventory().CountItems(CurrencySharedName) > Config.OnSalePrice;
             return Player.m_localPlayer.GetInventory().CountItems(CurrencySharedName) > Config.Price;
         }
 
-        public string GetTooltip()
+        public bool HasRequiredKey()
+        {
+            if (Config.RequiredKey.IsNullOrWhiteSpace()) return true;
+            return Player.m_localPlayer.HaveUniqueKey(Config.RequiredKey);
+        }
+
+        private string GetTooltip()
         {
             StringBuilder stringBuilder = new StringBuilder();
             stringBuilder.Append($"\n<color=yellow>{SharedName}</color>\n\n");
@@ -304,12 +385,19 @@ public static class Shop
             item.m_durability = item.GetMaxDurability();
             if (!Player.m_localPlayer.GetInventory().AddItem(item)) return false;
             Player.m_localPlayer.GetInventory().RemoveItem(CurrencySharedName, onSale ? Config.OnSalePrice : Config.Price);
+            if (onSale) OnSaleItems.Remove(this);
+            else AvailableItems.Remove(this);
             return true;
         }
 
         private bool GetItem()
         {
-            if (ObjectDB.m_instance.GetItemPrefab(Config.PrefabName) is not { } prefab || !prefab.TryGetComponent(out ItemDrop component)) return false;
+            if (ObjectDB.m_instance.GetItemPrefab(Config.PrefabName) is not { } prefab ||
+                !prefab.TryGetComponent(out ItemDrop component))
+            {
+                TraderQuestsPlugin.TraderQuestsLogger.LogWarning("Failed to validate store item: " + Config.PrefabName);
+                return false;
+            }
             Prefab = component;
             Icon = component.m_itemData.GetIcon();
             SharedName = component.m_itemData.m_shared.m_name;
@@ -319,7 +407,11 @@ public static class Shop
         private bool GetCurrency()
         {
             if (ObjectDB.m_instance.GetItemPrefab(Config.CurrencyPrefab) is not { } prefab ||
-                !prefab.TryGetComponent(out ItemDrop component)) return false;
+                !prefab.TryGetComponent(out ItemDrop component))
+            {
+                TraderQuestsPlugin.TraderQuestsLogger.LogWarning("Failed to validate currency: " + Config.PrefabName);
+                return false;
+            }
             CurrencyIcon = component.m_itemData.GetIcon();
             CurrencySharedName = component.m_itemData.m_shared.m_name;
             if (Config.OnSalePrice <= 0)

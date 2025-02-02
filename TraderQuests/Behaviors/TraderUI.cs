@@ -19,7 +19,6 @@ public class TraderUI : MonoBehaviour
     }
     
     public static TraderUI m_instance = null!;
-    
     public static void LoadAssets()
     {
         if (TraderQuestsPlugin.Assets.LoadAsset<GameObject>("QuestGUI") is { } panel)
@@ -34,6 +33,7 @@ public class TraderUI : MonoBehaviour
         if (TraderQuestsPlugin.Assets.LoadAsset<GameObject>("QuestItem") is { } item)
         {
             m_item = item;
+            m_item.AddComponent<ItemUI>();
         }
         else
         {
@@ -44,14 +44,14 @@ public class TraderUI : MonoBehaviour
     [Description("Headers")]
     public Text m_topic = null!;
     public Text m_activeText = null!;
+    public Text m_currencyText = null!;
+    public Image m_currencyImage = null!;
     
-    [Description("Button text components")]
     public Text m_bountyButtonText = null!;
     public Text m_treasureButtonText = null!;
     public Text m_shopButtonText = null!;
     public Text m_selectButtonText = null!;
     public Text m_cancelButtonText = null!;
-
     public Text m_tooltip = null!;
 
     [Description("Root scrollbar containers")]
@@ -73,9 +73,12 @@ public class TraderUI : MonoBehaviour
         m_selectButtonText = Utils.FindChild(gameObject.transform, "$text_select").GetComponent<Text>();
         m_cancelButtonText = Utils.FindChild(gameObject.transform, "$text_cancel").GetComponent<Text>();
         m_shopButtonText = Utils.FindChild(gameObject.transform, "$text_shop").GetComponent<Text>();
+        m_currencyText = Utils.FindChild(gameObject.transform, "$text_currency").GetComponent<Text>();
+        m_currencyImage = Utils.FindChild(gameObject.transform, "$image_currency").GetComponent<Image>();
             
         m_topic.color = new Color32(255, 164, 0, 255);
         m_activeText.color = new Color32(255, 164, 0, 255);
+        m_currencyText.color = new Color32(255, 205, 0, 255);
         
         if (Utils.FindChild(gameObject.transform, "$list_content") is RectTransform { } list)
         {
@@ -102,6 +105,14 @@ public class TraderUI : MonoBehaviour
 
     public void Show() => gameObject.SetActive(true);
     public void Hide() => gameObject.SetActive(false);
+
+    public void SetCurrentCurrency(string text) => m_currencyText.text = text;
+
+    public void SetCurrencyIcon(Sprite? icon)
+    {
+        m_currencyImage.color = icon is null ? Color.clear : Color.white;
+        m_currencyImage.sprite = icon;
+    }
     
     public void UpdatePanelPosition()
     {
@@ -181,6 +192,7 @@ public class TraderUI : MonoBehaviour
         m_item.transform.Find("$image_selected").GetComponent<Image>().sprite = Assets.ListBackground;
         m_item.transform.Find("$image_icon").GetComponent<Image>().material = Assets.ItemMat;
         m_item.transform.Find("Price/$image_currency").GetComponent<Image>().material = Assets.ItemMat;
+        m_currencyImage.material = Assets.ItemMat;
     }
     
     private void SetButtons()
@@ -229,28 +241,23 @@ public class TraderUI : MonoBehaviour
                                 if (BountySystem.SelectedActiveBounty.IsComplete())
                                 {
                                     BountySystem.SelectedActiveBounty.CollectReward(Player.m_localPlayer);
-                                    BountySystem.CompletedBounties[BountySystem.SelectedActiveBounty.Config.UniqueID] = BountySystem.SelectedActiveBounty.CompletedOn;
                                 }
                                 else
                                 {
-                                    BountySystem.AvailableBounties[BountySystem.SelectedActiveBounty.Config.UniqueID] = BountySystem.SelectedActiveBounty;
-                                    // return cost
+                                    if (!BountySystem.SelectedActiveBounty.Deactivate(true)) return;
                                 }
-
-                                BountySystem.ActiveBounties.Remove(BountySystem.SelectedActiveBounty.Config.UniqueID);
                                 BountySystem.SelectedActiveBounty = null;
                                 BountySystem.UpdateMinimap();
                                 break;
                             case "$button_treasure":
                                 if (TreasureSystem.SelectedActiveTreasure is null) return;
-                                TreasureSystem.ActiveTreasures.Remove(TreasureSystem.SelectedActiveTreasure.Config.UniqueID);
-                                TreasureSystem.AvailableTreasures[TreasureSystem.SelectedActiveTreasure.Config.UniqueID] = TreasureSystem.SelectedActiveTreasure;
+                                if (!TreasureSystem.SelectedActiveTreasure.Deactivate(true)) return;
                                 TreasureSystem.SelectedActiveTreasure = null;
                                 TreasureSystem.UpdateMinimap();
                                 break;
                             case "$button_shop":
                                 if (Shop.SelectedSaleItem is null) return;
-                                Shop.SelectedSaleItem.Purchase(true);
+                                if (!Shop.SelectedSaleItem.Purchase(true)) return;
                                 break;
                         }
                         UpdatePanel();
@@ -266,6 +273,11 @@ public class TraderUI : MonoBehaviour
             }
         }
 
+        SetDefaultButtonTextColor();
+    }
+
+    public void SetDefaultButtonTextColor()
+    {
         m_bountyButtonText.color = new Color32(255, 164, 0, 255);
         m_treasureButtonText.color = new Color32(255, 164, 0, 255);
         m_shopButtonText.color = new Color32(255, 164, 0, 255);
@@ -299,6 +311,8 @@ public class TraderUI : MonoBehaviour
         UpdateTopic();
         DestroyItems();
         SetTooltip("");
+        SetCurrencyIcon(null);
+        SetCurrentCurrency("");
         switch (CurrentTopic)
         {
             case "$button_bounty":
@@ -343,7 +357,7 @@ public class TraderUI : MonoBehaviour
         m_selectButtonText.text = Localization.instance.Localize(select);
         m_cancelButtonText.text = Localization.instance.Localize(cancel);
     }
-
+    
     public void DestroyItems()
     {
         foreach (Transform child in m_listRoot) Destroy(child.gameObject);

@@ -18,7 +18,7 @@ public class Treasure : MonoBehaviour
     private Minimap.PinData? m_pin;
 
     public float m_range = 20f;
-    public static List<Treasure> m_instances = new List<Treasure>();
+    private static readonly List<Treasure> m_instances = new List<Treasure>();
     
     public void Awake()
     {
@@ -53,7 +53,9 @@ public class Treasure : MonoBehaviour
     private void AddPin()
     {
         if (m_pin is not null || m_data is null) return;
-        m_pin = Minimap.m_instance.AddPin(transform.position, Minimap.PinType.EventArea, m_data.Config.Name, false, false);
+        m_pin = Minimap.m_instance.AddPin(transform.position, Minimap.PinType.RandomEvent, m_data.Config.Name, false, false);
+        m_pin.m_doubleSize = true;
+        m_pin.m_animate = true;
     }
 
     public void SetData(TreasureSystem.TreasureData data)

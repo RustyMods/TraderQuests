@@ -76,6 +76,7 @@ public static class QuestSystem
             
             if (WorldGenerator.instance.GetBiome(vector3) != biome) continue;
             if (WorldGenerator.instance.GetBiomeArea(vector3) is not Heightmap.BiomeArea.Median) continue;
+            
             if (biome != Heightmap.Biome.Ocean && ZoneSystem.m_instance.GetSolidHeight(vector3) <= ZoneSystem.m_instance.m_waterLevel + 0.5f) continue;
             pos = vector3;
             return true;
