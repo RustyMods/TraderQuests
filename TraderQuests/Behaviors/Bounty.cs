@@ -103,6 +103,7 @@ public class Bounty : MonoBehaviour
 
     public void OnDeath()
     {
+        if (!Player.m_localPlayer) return;
         if (Player.m_localPlayer.GetPlayerID() != m_hunter)
         {
             if (!m_nview.IsOwner()) return;

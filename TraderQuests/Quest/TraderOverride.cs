@@ -2,7 +2,9 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using BepInEx;
 using HarmonyLib;
+using ServerSync;
 using UnityEngine;
 using YamlDotNet.Serialization;
 
@@ -11,7 +13,8 @@ namespace TraderQuests.Quest;
 public static class TraderOverride
 {
     private static readonly string TraderFolderPath = TraderQuestsPlugin.FolderPath + Path.DirectorySeparatorChar + "Trader";
-    private static readonly Dictionary<string, List<TraderItem>> OverrideData = new();
+    private static readonly CustomSyncedValue<string> ServerTrader = new(TraderQuestsPlugin.ConfigSync, "ServerTraderData", "");
+    private static Dictionary<string, List<TraderItem>> OverrideData = new();
 
     [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Awake))]
     private static class ZNetScene_Awake_Patch
@@ -45,8 +48,7 @@ public static class TraderOverride
             }
         }
     }
-
-    public static void LoadFiles()
+    private static void LoadFiles()
     {
         if (!Directory.Exists(TraderQuestsPlugin.FolderPath)) Directory.CreateDirectory(TraderQuestsPlugin.FolderPath);
         if (!Directory.Exists(TraderFolderPath)) Directory.CreateDirectory(TraderFolderPath);
@@ -66,6 +68,59 @@ public static class TraderOverride
                 TraderQuestsPlugin.TraderQuestsLogger.LogWarning("Failed to deserialize file: " + fileName);
             }
         }
+    }
+    public static void Init()
+    {
+        LoadFiles();
+        
+        ServerTrader.ValueChanged += () =>
+        {
+            if (!ZNet.m_instance || ZNet.m_instance.IsServer()) return;
+            if (ServerTrader.Value.IsNullOrWhiteSpace()) return;
+            var deserializer = new DeserializerBuilder().Build();
+            try
+            {
+                OverrideData = deserializer.Deserialize<Dictionary<string, List<TraderItem>>>(ServerTrader.Value);
+            }
+            catch
+            {
+                TraderQuestsPlugin.TraderQuestsLogger.LogWarning("Failed to deserialize server trader data");
+            }
+        };
+        
+        SetupFileWatch();
+    }
+
+    private static void SetupFileWatch()
+    {
+        FileSystemWatcher watcher = new FileSystemWatcher(TraderFolderPath, "*.yml");
+
+        void OnFileChange(object sender, FileSystemEventArgs args)
+        {
+            Reload();
+        }
+
+        watcher.Changed += OnFileChange;
+        watcher.Created += OnFileChange;
+        watcher.Deleted += OnFileChange;
+
+        watcher.IncludeSubdirectories = true;
+        watcher.SynchronizingObject = ThreadingHelper.SynchronizingObject;
+        watcher.EnableRaisingEvents = true;
+    }
+
+    public static void Reload()
+    {
+        if (!ZNet.m_instance || !ZNet.m_instance.IsServer()) return;
+        LoadFiles();
+        UpdateServer();
+    }
+    public static void UpdateServer()
+    {
+        if (!ZNet.m_instance || !ZNet.m_instance.IsServer()) return;
+        if (OverrideData.Count <= 0) return;
+        var serializer = new SerializerBuilder().Build();
+        ServerTrader.Value = serializer.Serialize(OverrideData);
     }
     
     [HarmonyPatch(typeof(Trader), nameof(Trader.GetAvailableItems))]

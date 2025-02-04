@@ -50,6 +50,7 @@ public class TraderUI : MonoBehaviour
     public Text m_bountyButtonText = null!;
     public Text m_treasureButtonText = null!;
     public Text m_shopButtonText = null!;
+    public Text m_gambleButtonText = null!;
     public Text m_selectButtonText = null!;
     public Text m_cancelButtonText = null!;
     public Text m_tooltip = null!;
@@ -59,15 +60,32 @@ public class TraderUI : MonoBehaviour
     public RectTransform m_activeRoot = null!;
     public RectTransform m_tooltipRoot = null!;
 
+    [Description("Tabs")] 
+    public Button m_bountyButton = null!;
+    public Button m_treasureButton = null!;
+    public Button m_shopButton = null!;
+    public Button m_gambleButton = null!;
+
+    public GameObject m_itemList = null!;
+    public GameObject m_tooltipPanel = null!;
+    public GameObject m_gamblePanel = null!;
+    
     public string CurrentTopic = "$button_bounty";
 
     public void Awake()
     {
         m_instance = this;
 
+        m_itemList = gameObject.transform.Find("Panel/ItemList").gameObject;
+        m_tooltipPanel = gameObject.transform.Find("Panel/TooltipPanel").gameObject;
+        m_gamblePanel = gameObject.transform.Find("GamblePanel").gameObject;
+
+        m_gamblePanel.AddComponent<GambleUI>();
+
         m_topic = Utils.FindChild(gameObject.transform, "$text_topic").GetComponent<Text>();
         m_bountyButtonText = Utils.FindChild(gameObject.transform, "$text_bounty").GetComponent<Text>();
         m_treasureButtonText = Utils.FindChild(gameObject.transform, "$text_treasure").GetComponent<Text>();
+        m_gambleButtonText = Utils.FindChild(gameObject.transform, "$text_gamble").GetComponent<Text>();
         m_activeText = Utils.FindChild(gameObject.transform, "$text_current").GetComponent<Text>();
         m_tooltip = Utils.FindChild(gameObject.transform, "$text_tooltip").GetComponent<Text>();
         m_selectButtonText = Utils.FindChild(gameObject.transform, "$text_select").GetComponent<Text>();
@@ -96,24 +114,41 @@ public class TraderUI : MonoBehaviour
         m_bountyButtonText.text = Localization.instance.Localize(Keys.Bounty);
         m_treasureButtonText.text = Localization.instance.Localize(Keys.Treasure);
         m_shopButtonText.text = Localization.instance.Localize(Keys.Shop);
+        m_gambleButtonText.text = Localization.instance.Localize(Keys.Gamble);
         
         UpdatePanelPosition();
         SetFont();
-        SetAssets();
-        SetButtons();
+        SetupAssets();
+        SetupButtons();
     }
-
     public void Show() => gameObject.SetActive(true);
     public void Hide() => gameObject.SetActive(false);
 
+    public void ShowGamble(bool enable)
+    {
+        if (enable)
+        {
+            m_itemList.SetActive(false);
+            m_tooltipPanel.SetActive(false);
+            m_gamblePanel.SetActive(true);
+            GambleUI.m_instance.LoadRandomIcons();
+            GambleUI.m_instance.ResetTooltips();
+            GambleUI.m_instance.SetupReward(GambleSystem.GetItem());
+            
+        }
+        else
+        {
+            m_itemList.SetActive(true);
+            m_tooltipPanel.SetActive(true);
+            m_gamblePanel.SetActive(false);
+        }
+    }
     public void SetCurrentCurrency(string text) => m_currencyText.text = text;
-
     public void SetCurrencyIcon(Sprite? icon)
     {
         m_currencyImage.color = icon is null ? Color.clear : Color.white;
         m_currencyImage.sprite = icon;
     }
-    
     public void UpdatePanelPosition()
     {
         if (gameObject.transform is RectTransform rect)
@@ -124,7 +159,7 @@ public class TraderUI : MonoBehaviour
     
     public void SetFont()
     {
-        var fontOption = TraderQuestsPlugin.Font.Value switch
+        string fontOption = TraderQuestsPlugin.Font.Value switch
         {   
             FontOptions.Norse => "Norse",
             FontOptions.AveriaSerifLibre => "AveriaSerifLibre-Regular",
@@ -151,7 +186,7 @@ public class TraderUI : MonoBehaviour
         return fonts.FirstOrDefault(x => x.name == name);
     }
     
-    private void SetAssets()
+    private void SetupAssets()
     {
         var panel = gameObject.transform.Find("Panel").GetComponent<Image>();
         panel.sprite = Assets.WoodPanel_512x512;
@@ -184,9 +219,9 @@ public class TraderUI : MonoBehaviour
 
         gameObject.transform.Find("Panel/TooltipPanel/ItemList/Content").GetComponent<Image>().sprite = Assets.ListBackground;
         gameObject.transform.Find("Panel/TooltipPanel/Tooltip/Content").GetComponent<Image>().sprite = Assets.ListBackground;
-
-        Utils.FindChild(gameObject.transform, "$button_refresh").Find("Icon").GetComponent<Image>().sprite = Assets.RefreshImage;
         
+        Utils.FindChild(gameObject.transform, "$button_refresh").Find("Icon").GetComponent<Image>().sprite = Assets.RefreshImage;
+
         if (m_item is null) return;
         m_item.transform.Find("Border").GetComponent<Image>().sprite = Assets.ListBackground;
         m_item.transform.Find("$image_selected").GetComponent<Image>().sprite = Assets.ListBackground;
@@ -195,17 +230,31 @@ public class TraderUI : MonoBehaviour
         m_currencyImage.material = Assets.ItemMat;
     }
     
-    private void SetButtons()
+    private void SetupButtons()
     {
         foreach (Button button in gameObject.GetComponentsInChildren<Button>())
         {
             switch (button.name)
             {
-                case "$button_bounty" or "$button_treasure" or "$button_shop":
+                case "$button_bounty" or "$button_treasure" or "$button_shop" or "$button_gamble":
+                    switch (button.name)
+                    {
+                        case "$button_bounty":
+                            m_bountyButton = button;
+                            break;
+                        case "$button_treasure":
+                            m_treasureButton = button;
+                            break;
+                        case "$button_shop":
+                            m_shopButton = button;
+                            break;
+                        case "$button_gamble":
+                            m_gambleButton = button;
+                            break;
+                    }
                     button.onClick.AddListener(() =>
                     {
                         CurrentTopic = button.name;
-                        UpdateTopic();
                         UpdatePanel();
                     });
                     break;
@@ -225,6 +274,10 @@ public class TraderUI : MonoBehaviour
                             case "$button_shop":
                                 if (Shop.SelectedItem is null) return;
                                 if (!Shop.SelectedItem.Purchase(false)) return;
+                                break;
+                            case "$button_gamble":
+                                if (GambleUI.m_instance.m_item is null) return;
+                                if (!GambleUI.m_instance.m_item.CollectReward()) return;
                                 break;
                         }
 
@@ -247,20 +300,23 @@ public class TraderUI : MonoBehaviour
                                     if (!BountySystem.SelectedActiveBounty.Deactivate(true)) return;
                                 }
                                 BountySystem.SelectedActiveBounty = null;
-                                BountySystem.UpdateMinimap();
+                                UpdatePanel();
                                 break;
                             case "$button_treasure":
                                 if (TreasureSystem.SelectedActiveTreasure is null) return;
                                 if (!TreasureSystem.SelectedActiveTreasure.Deactivate(true)) return;
                                 TreasureSystem.SelectedActiveTreasure = null;
-                                TreasureSystem.UpdateMinimap();
+                                UpdatePanel();
                                 break;
                             case "$button_shop":
                                 if (Shop.SelectedSaleItem is null) return;
                                 if (!Shop.SelectedSaleItem.Purchase(true)) return;
+                                UpdatePanel();
+                                break;
+                            case "$button_gamble":
+                                GambleUI.m_instance.Roll();
                                 break;
                         }
-                        UpdatePanel();
                     });
                     break;
                 case "$button_refresh":
@@ -275,12 +331,15 @@ public class TraderUI : MonoBehaviour
 
         SetDefaultButtonTextColor();
     }
-
+    
+    public void SetCancelButtonColor(bool enable) => m_cancelButtonText.color = enable ? new Color32(255, 164, 0, 255) : Color.gray;
+    public void setSelectButtonColor(bool enable) => m_selectButtonText.color = enable ? new Color32(255, 164, 0, 255) : Color.gray;
     public void SetDefaultButtonTextColor()
     {
         m_bountyButtonText.color = new Color32(255, 164, 0, 255);
         m_treasureButtonText.color = new Color32(255, 164, 0, 255);
         m_shopButtonText.color = new Color32(255, 164, 0, 255);
+        m_gambleButtonText.color = new Color32(255, 164, 0, 255);
         m_selectButtonText.color = new Color32(255, 164, 0, 255);
         m_cancelButtonText.color = new Color32(255, 164, 0, 255);
     }
@@ -313,6 +372,8 @@ public class TraderUI : MonoBehaviour
         SetTooltip("");
         SetCurrencyIcon(null);
         SetCurrentCurrency("");
+        UpdateTabs();
+        ShowGamble(CurrentTopic == "$button_gamble");
         switch (CurrentTopic)
         {
             case "$button_bounty":
@@ -328,6 +389,14 @@ public class TraderUI : MonoBehaviour
                 break;
         }
     }
+
+    public void UpdateTabs()
+    {
+        m_bountyButton.gameObject.SetActive(TraderQuestsPlugin.BountyEnabled.Value is TraderQuestsPlugin.Toggle.On);
+        m_treasureButton.gameObject.SetActive(TraderQuestsPlugin.TreasureEnabled.Value is TraderQuestsPlugin.Toggle.On);
+        m_shopButton.gameObject.SetActive(TraderQuestsPlugin.StoreEnabled.Value is TraderQuestsPlugin.Toggle.On);
+        m_gambleButton.gameObject.SetActive(TraderQuestsPlugin.GambleEnabled.Value is TraderQuestsPlugin.Toggle.On);
+    }
     
     private void UpdateTopic()
     {
@@ -342,12 +411,16 @@ public class TraderUI : MonoBehaviour
                 SetTopic(Keys.AvailableTreasure);
                 SetSecondTopic(Keys.ActiveTreasure);
                 SetSelectionButtons(Keys.Select, Keys.Cancel);
-
                 break;
             case "$button_shop":
                 SetTopic(Keys.AvailableItems);
                 SetSecondTopic(Keys.OnSaleItems);
                 SetSelectionButtons(Keys.Buy, Keys.Select);
+                break;
+            case "$button_gamble":
+                SetTopic(Keys.SlotMachine);
+                SetSecondTopic("");
+                SetSelectionButtons(Keys.Collect, Keys.Roll);
                 break;
         }
     }

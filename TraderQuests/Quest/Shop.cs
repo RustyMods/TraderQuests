@@ -35,13 +35,8 @@ public static class Shop
         {
             Configs = LoadDefaults();
             var serializer = new SerializerBuilder().Build();
-            for (var index = 0; index < Configs.Count; index++)
-            {
-                var config = Configs[index];
-                var data = serializer.Serialize(config);
-                var filePath = ShopFolderPath + Path.DirectorySeparatorChar + $"{index:D4}" + ".yml";
-                File.WriteAllText(filePath, data);
-            }
+            var filePath = ShopFolderPath + Path.DirectorySeparatorChar + "0001.Shop.yml";
+            File.WriteAllText(filePath, serializer.Serialize(Configs));
         }
         else
         {
@@ -50,7 +45,7 @@ public static class Shop
             {
                 try
                 {
-                    Configs.Add(deserializer.Deserialize<ItemConfig>(File.ReadAllText(file)));
+                    Configs = deserializer.Deserialize<List<ItemConfig>>(file);
                 }
                 catch
                 {
@@ -80,6 +75,7 @@ public static class Shop
     }
     public static void UpdateServerStore()
     {
+        if (!ZNet.m_instance || !ZNet.m_instance.IsServer()) return;
         if (Configs.Count <= 0) return;
         var serializer = new SerializerBuilder().Build();
         ServerStore.Value = serializer.Serialize(Configs);

@@ -18,16 +18,16 @@ public static class TreasureSystem
     private static readonly string TreasureFolderPath = TraderQuestsPlugin.FolderPath + Path.DirectorySeparatorChar + "Treasures";
     private static readonly CustomSyncedValue<string> ServerTreasures = new(TraderQuestsPlugin.ConfigSync, "ServerTreasureConfigs", "");
     private static List<TreasureData.TreasureConfig> Configs = new();
-    private static GameObject? TreasureBarrel;
     public static readonly Dictionary<string, TreasureData> AllTreasures = new();
-    private static Dictionary<string, TreasureData> AvailableTreasures = new();
+    private static readonly Dictionary<string, TreasureData> AvailableTreasures = new();
     private static readonly Dictionary<string, TreasureData> ActiveTreasures = new();
     private static readonly Dictionary<string, TreasureData> CompletedTreasures = new();
+    private static readonly List<TreasureData> LoadedTreasures = new();
+    private static GameObject? TreasureBarrel;
     public static TreasureData? SelectedTreasure;
     public static TreasureData? SelectedActiveTreasure;
 
     private static double LastLoadedTime;
-    private static readonly List<TreasureData> CurrentTreasures = new();
 
     [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Awake))]
     private static class ZNetScene_Awake_Patch
@@ -55,24 +55,6 @@ public static class TreasureSystem
         {
             if (!ZNetScene.instance) return;
             SetupTreasures();
-        }
-    }
-
-    public static void UpdateMinimap()
-    {
-        // Remove all pins
-        foreach (var treasure in ActiveTreasures.Values)
-        {
-            if (treasure.PinData is null) continue;
-            Minimap.m_instance.RemovePin(treasure.PinData);
-        }
-        // Add all pins
-        foreach (var treasure in ActiveTreasures.Values)
-        {
-            if (treasure.PinData is not null) continue;
-            Minimap.PinData pin = Minimap.m_instance.AddPin(treasure.Position, Minimap.PinType.Boss, treasure.Config.Name, false, false);
-            pin.m_icon = treasure.Icon;
-            treasure.PinData = pin;
         }
     }
 
@@ -120,7 +102,7 @@ public static class TreasureSystem
 
     public static void Init()
     {
-        Configs = LoadFiles();
+        LoadFiles();
 
         ServerTreasures.ValueChanged += () =>
         {
@@ -138,13 +120,42 @@ public static class TreasureSystem
                 TraderQuestsPlugin.TraderQuestsLogger.LogWarning("Failed to deserialize server files");
             }
         };
+        
+        SetupFileWatch();
+    }
+
+    private static void Reload()
+    {
+        if (!ZNet.m_instance || !ZNet.m_instance.IsServer()) return;
+        LoadFiles();
+        UpdateServerTreasures();
+        SetupTreasures();
+    }
+
+    private static void SetupFileWatch()
+    {
+        FileSystemWatcher watcher = new FileSystemWatcher(TreasureFolderPath, "*.yml");
+        void OnFileChange(object sender, FileSystemEventArgs args) => Reload();
+        watcher.Changed += OnFileChange;
+        watcher.Deleted += OnFileChange;
+        watcher.Created += OnFileChange;
+        watcher.IncludeSubdirectories = true;
+        watcher.SynchronizingObject = ThreadingHelper.SynchronizingObject;
+        watcher.EnableRaisingEvents = true;
     }
 
     public static void UpdateServerTreasures()
     {
+        if (!ZNet.m_instance || !ZNet.m_instance.IsServer()) return;
         if (Configs.Count <= 0) return;
         var serializer = new SerializerBuilder().Build();
         ServerTreasures.Value = serializer.Serialize(Configs);
+    }
+
+    public static void Reset()
+    {
+        ActiveTreasures.Clear();
+        foreach(var treasure in AllTreasures.Values) treasure.ClearData();
     }
 
     private static void SetupTreasures()
@@ -155,15 +166,12 @@ public static class TreasureSystem
             treasure.Setup();
             if (!treasure.IsValid) continue;
             AllTreasures[treasure.Config.UniqueID] = treasure;
+            AvailableTreasures[treasure.Config.UniqueID] = treasure;
         }
-
-        AvailableTreasures = new Dictionary<string, TreasureData>(AllTreasures);
-        LoadPlayerData();
     }
 
-    public static void SaveToPlayer()
+    public static void SaveToPlayer(Player player)
     {
-        if (!Player.m_localPlayer) return;
         var serializer = new SerializerBuilder().Build();
         Player.m_localPlayer.m_customData.Remove("ActiveTreasures");
         Player.m_localPlayer.m_customData.Remove("CompletedTreasures");
@@ -175,7 +183,7 @@ public static class TreasureSystem
                 treasurePos[treasure.Config.UniqueID] = treasure.FormatPosition();
             }
 
-            Player.m_localPlayer.m_customData["ActiveTreasures"] = serializer.Serialize(treasurePos);
+            player.m_customData["ActiveTreasures"] = serializer.Serialize(treasurePos);
         }
 
         if (CompletedTreasures.Count > 0)
@@ -186,15 +194,14 @@ public static class TreasureSystem
                 completedTreasures[treasure.Config.UniqueID] = treasure.CompletedOn;
             }
 
-            Player.m_localPlayer.m_customData["CompletedTreasures"] = serializer.Serialize(completedTreasures);
+            player.m_customData["CompletedTreasures"] = serializer.Serialize(completedTreasures);
         }
     }
 
-    private static void LoadPlayerData()
+    public static void LoadPlayerData(Player player)
     {
-        if (!Player.m_localPlayer) return;
         var deserializer = new DeserializerBuilder().Build();
-        if (Player.m_localPlayer.m_customData.TryGetValue("ActiveTreasures", out string activeData))
+        if (player.m_customData.TryGetValue("ActiveTreasures", out string activeData))
         {
             var activeTreasures = deserializer.Deserialize<Dictionary<string, string>>(activeData);
             foreach (var kvp in activeTreasures)
@@ -207,7 +214,7 @@ public static class TreasureSystem
             }
         }
 
-        if (Player.m_localPlayer.m_customData.TryGetValue("CompletedTreasures", out string completedData))
+        if (player.m_customData.TryGetValue("CompletedTreasures", out string completedData))
         {
             var completedTreasures = deserializer.Deserialize<Dictionary<string, long>>(completedData);
             foreach (var kvp in completedTreasures)
@@ -221,37 +228,64 @@ public static class TreasureSystem
         }
     }
 
-    private static List<TreasureData.TreasureConfig> LoadFiles()
+    private static void LoadFiles()
     {
         if (!Directory.Exists(TraderQuestsPlugin.FolderPath)) Directory.CreateDirectory(TraderQuestsPlugin.FolderPath);
         if (!Directory.Exists(TreasureFolderPath)) Directory.CreateDirectory(TreasureFolderPath);
         var files = Directory.GetFiles(TreasureFolderPath, "*.yml", SearchOption.AllDirectories);
+        Configs.Clear();
         if (files.Length <= 0)
         {
-            var data = GetDefaultTreasures();
+            Configs = GetDefaultTreasures();
             var serializer = new SerializerBuilder().Build();
-            foreach (var config in data)
+            var sortedData = new Dictionary<string, List<TreasureData.TreasureConfig>>();
+            foreach (var config in Configs)
             {
-                var fileName = $"{config.UniqueID}.yml";
-                File.WriteAllText(TreasureFolderPath + Path.DirectorySeparatorChar + fileName, serializer.Serialize(config));
+                if (sortedData.TryGetValue(config.Biome, out List<TreasureData.TreasureConfig> list))
+                {
+                    list.Add(config);
+                }
+                else
+                {
+                    sortedData[config.Biome] = new List<TreasureData.TreasureConfig>() { config };
+                }
             }
-            return data;
-        }
-        List<TreasureData.TreasureConfig> configs = new();
-        var deserializer = new DeserializerBuilder().Build();
-        foreach (var file in files)
-        {
-            try
-            {
-                configs.Add(deserializer.Deserialize<TreasureData.TreasureConfig>(File.ReadAllText(file)));
-            }
-            catch
-            {
-                TraderQuestsPlugin.TraderQuestsLogger.LogWarning("Failed to deserialize file: " + Path.GetFileName(file));
-            }
-        }
 
-        return configs;
+            foreach (var kvp in sortedData)
+            {
+                var prefix = kvp.Key switch
+                {
+                    "Meadows" => "0001",
+                    "BlackForest" => "0002",
+                    "Swamp" => "0003",
+                    "Mountains" => "0004",
+                    "Plains" => "0005",
+                    "Mistlands" => "0006",
+                    "AshLands" => "0007",
+                    "DeepNorth" => "0008",
+                    "Ocean" => "0009",
+                    _ => "0000"
+                };
+                var filePath = TreasureFolderPath + Path.DirectorySeparatorChar + $"{prefix}.{kvp.Key}.yml";
+                File.WriteAllText(filePath, serializer.Serialize(kvp.Value));
+            }
+        }
+        else
+        {
+            var deserializer = new DeserializerBuilder().Build();
+            foreach (var filePath in files)
+            {
+                try
+                {
+                    var data = deserializer.Deserialize<List<TreasureData.TreasureConfig>>(File.ReadAllText(filePath));
+                    Configs.AddRange(data);
+                }
+                catch
+                {
+                    TraderQuestsPlugin.TraderQuestsLogger.LogWarning("Failed to deserialize file: " + Path.GetFileName(filePath));
+                }
+            }
+        }
     }
 
     public static void LoadAvailable()
@@ -276,25 +310,27 @@ public static class TreasureSystem
             }
         }
 
-        if (LastLoadedTime == 0.0 || CurrentTreasures.Count <= 0 || ZNet.m_instance.GetTimeSeconds() - LastLoadedTime >
+        bool reloadPositions = false;
+        if (LastLoadedTime == 0.0 || LoadedTreasures.Count <= 0 || ZNet.m_instance.GetTimeSeconds() - LastLoadedTime >
             TraderQuestsPlugin.TreasureCooldown.Value * 60)
         {
-            CurrentTreasures.Clear();
+            LoadedTreasures.Clear();
             List<TreasureData> treasures = new List<TreasureData>(AvailableTreasures.Values.Where(treasure => treasure.HasRequiredKey()).ToList());
             for (int index = 0; index < TraderQuestsPlugin.MaxTreasureDisplayed.Value; ++index)
             {
                 if (GetRandomWeightedTreasure(treasures) is { } treasure)
                 {
-                    CurrentTreasures.Add(treasure);
+                    LoadedTreasures.Add(treasure);
                     treasures.Remove(treasure);
                 }
             }
             LastLoadedTime = ZNet.m_instance.GetTimeSeconds();
+            reloadPositions = true;
         }
         
-        foreach (var treasure in CurrentTreasures)
+        foreach (var treasure in LoadedTreasures)
         {
-            SetupItem(UnityEngine.Object.Instantiate(TraderUI.m_item, TraderUI.m_instance.m_listRoot), treasure, false);
+            SetupItem(UnityEngine.Object.Instantiate(TraderUI.m_item, TraderUI.m_instance.m_listRoot), treasure, false, reloadPositions);
 
         }
         TraderUI.m_instance.ResizeListRoot(AvailableTreasures.Count);
@@ -326,12 +362,12 @@ public static class TreasureSystem
         if (TraderUI.m_item is null) return;
         foreach (var treasure in ActiveTreasures.Values)
         {
-            SetupItem(UnityEngine.Object.Instantiate(TraderUI.m_item, TraderUI.m_instance.m_activeRoot), treasure, true);
+            SetupItem(UnityEngine.Object.Instantiate(TraderUI.m_item, TraderUI.m_instance.m_activeRoot), treasure, true, false);
         }
         TraderUI.m_instance.ResizeActiveListRoot(ActiveTreasures.Count);   
     }
     
-    private static void SetupItem(GameObject item, TreasureData data, bool active)
+    private static void SetupItem(GameObject item, TreasureData data, bool active, bool reloadPosition)
     {
         if (!item.TryGetComponent(out ItemUI component)) return;
         bool enable = data.HasRequirements();
@@ -341,7 +377,7 @@ public static class TreasureSystem
         component.SetCurrency(data.CurrencyIcon, enable);
         component.SetPrice(data.Config.Price.ToString(), enable);
         component.SetSelected(enable);
-        component.m_button.onClick.AddListener(() => data.OnSelected(component, enable, active));
+        component.m_button.onClick.AddListener(() => data.OnSelected(component, enable, active, reloadPosition));
     }
 
     private static List<TreasureData.TreasureConfig> GetDefaultTreasures()
@@ -479,7 +515,7 @@ public static class TreasureSystem
             {
                 UniqueID = "DeepCaveTreasure.0001",
                 Name = "Dvergr Relic Stash",
-                Biome = "DeepCave",
+                Biome = "DeepNorth",
                 CurrencyPrefab = "Coins",
                 Price = 140,
                 RequiredKey = "defeated_queen",
@@ -547,7 +583,7 @@ public static class TreasureSystem
         public long CompletedOn;
         public bool Spawned;
 
-        public void OnSelected(ItemUI component, bool enable, bool active)
+        public void OnSelected(ItemUI component, bool enable, bool active, bool reloadPos)
         {
             TraderUI.m_instance.DeselectAll();
             TraderUI.m_instance.SetDefaultButtonTextColor();
@@ -560,16 +596,19 @@ public static class TreasureSystem
             }
             else
             {
-                if (!QuestSystem.FindSpawnLocation(Biome, out Vector3 position))
+                if (Position == Vector3.zero || reloadPos)
                 {
-                    Player.m_localPlayer.Message(MessageHud.MessageType.Center, "Failed to generate spawn location");
-                    return;
+                    if (!QuestSystem.FindSpawnLocation(Biome, out Vector3 position))
+                    {
+                        Player.m_localPlayer.Message(MessageHud.MessageType.Center, "Failed to generate spawn location");
+                        return;
+                    }
+                    Position = position;
                 }
-                Position = position;
                 SelectedTreasure = this;
             }
             BountySystem.SelectedActiveBounty = null;
-            TraderUI.m_instance.m_selectButtonText.color = enable ? new Color32(255, 164, 0, 255) : Color.gray;
+            TraderUI.m_instance.setSelectButtonColor(enable);
             TraderUI.m_instance.SetTooltip(GetTooltip());
             TraderUI.m_instance.SetCurrencyIcon(CurrencyIcon);
             TraderUI.m_instance.SetCurrentCurrency(Player.m_localPlayer.GetInventory().CountItems(CurrencySharedName).ToString());
@@ -618,6 +657,14 @@ public static class TreasureSystem
 
         public bool CoolDownPassed() => DateTime.Now.Ticks > Config.Cooldown + CompletedOn;
 
+        public void ClearData()
+        {
+            Position = Vector3.zero;
+            CompletedOn = 0L;
+            Completed = false;
+            Spawned = false;
+        }
+
         public bool HasRequirements()
         {
             if (!Player.m_localPlayer) return false;
@@ -641,11 +688,18 @@ public static class TreasureSystem
             }
 
             AvailableTreasures.Remove(Config.UniqueID);
-            CurrentTreasures.Remove(this);
+            LoadedTreasures.Remove(this);
             ActiveTreasures[Config.UniqueID] = this;
+            AddPin();
             SelectedTreasure = null;
-            UpdateMinimap();
             return true;
+        }
+
+        private void AddPin()
+        {
+            Minimap.PinData pin = Minimap.m_instance.AddPin(Position, Minimap.PinType.Boss, Config.Name, false, false);
+            pin.m_icon = Icon;
+            PinData = pin;
         }
 
         public bool Deactivate(bool returnCost)
@@ -657,8 +711,9 @@ public static class TreasureSystem
             }
 
             ActiveTreasures.Remove(Config.UniqueID);
+            Minimap.m_instance.RemovePin(PinData);
             AvailableTreasures[Config.UniqueID] = this;
-            CurrentTreasures.Add(this);
+            LoadedTreasures.Add(this);
             return true;
         }
 
@@ -693,7 +748,7 @@ public static class TreasureSystem
         private bool ValidateIcon()
         {
             if (ObjectDB.m_instance.GetItemPrefab(Config.IconPrefab) is not { } prefab ||
-                !prefab.TryGetComponent(out ItemDrop component)) return false;
+                !prefab.TryGetComponent(out ItemDrop component) && component.m_itemData.m_shared.m_icons.Length > 0) return false;
             Icon = component.m_itemData.GetIcon();
             return true;
         }
@@ -735,7 +790,7 @@ public static class TreasureSystem
             public float Weight = 1f;
             public string RequiredKey = "";
             public string Biome = "";
-            public string IconPrefab = "TraderCoin_RS";
+            public string IconPrefab = "TraderMap_RS";
             public string CurrencyPrefab = "";
             public int Price;
             public long Cooldown;

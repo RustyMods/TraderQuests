@@ -41,6 +41,9 @@ namespace TraderQuests
         public static ConfigEntry<Vector2> PanelPosition = null!;
         public static ConfigEntry<TraderUI.FontOptions> Font = null!;
         public static ConfigEntry<double> BountyCooldown = null!;
+        public static ConfigEntry<Toggle> BountyEnabled = null!;
+        public static ConfigEntry<Toggle> TreasureEnabled = null!;
+        public static ConfigEntry<Toggle> StoreEnabled = null!;
         public static ConfigEntry<int> MaxBountyDisplayed = null!;
         public static ConfigEntry<int> MaxActiveBounties = null!;
         public static ConfigEntry<double> TreasureCooldown = null!;
@@ -52,6 +55,7 @@ namespace TraderQuests
         public static ConfigEntry<Traders> AffectedTraders = null!;
         public static ConfigEntry<string> CustomTrader = null!;
         public static ConfigEntry<Toggle> OverrideStore = null!;
+        public static ConfigEntry<Toggle> GambleEnabled = null!;
 
         public BountySystem.BountyData? QueuedBountyData;
 
@@ -94,18 +98,23 @@ namespace TraderQuests
                 Order = 0
             }));
             OverrideStore = config("2 - Settings", "Override Trader", Toggle.Off, "If on, vanilla store will use loaded YML data");
-            
+
+            BountyEnabled = config("Bounty", "Enabled", Toggle.On, "If on, bounties enabled");
             BountyCooldown = config("Bounty", "Cooldown", 60.0, "Set duration between new bounties, in minutes");
             MaxBountyDisplayed = config("Bounty", "Max Available", 10, "Set max amount of available bounties displayed");
             MaxActiveBounties = config("Bounty", "Max Active", 10, "Set max amount of active bounties");
 
+            TreasureEnabled = config("Treasure", "Enabled", Toggle.On, "If on, treasure hunt enabled");
             TreasureCooldown = config("Treasure", "Cooldown", 60.0, "Set duration between new treasures, in minutes");
             MaxTreasureDisplayed = config("Treasure", "Max Available", 10, "Set max amount of available treasures displayed");
             MaxActiveTreasures = config("Treasure", "Max Active", 10, "Set max amount of active treasures");
-            
+
+            StoreEnabled = config("Shop", "Enabled", Toggle.On, "If on, shop enabled");
             ShopCooldown = config("Shop", "Cooldown", 60.0, "Set duration between new shop items, in minutes");
             MaxShopItems = config("Shop", "Max Available", 10, "Set max amount of available items to purchase");
             MaxSaleItems = config("Shop", "Max On Sale", 5, "Set max amount of items can be on sale");
+
+            GambleEnabled = config("Gamble", "Enabled", Toggle.Off, "If on, gambling slot machine is enabled");
         }
 
         public void Awake()
@@ -122,23 +131,35 @@ namespace TraderQuests
             TreasureSystem.Init();
             BountySystem.Init();
             Shop.Init();
-            TraderOverride.LoadFiles();
+            TraderOverride.Init();
+            GambleSystem.Init();
 
             Item TraderToken = new Item(Assets, "TraderCoin_RS");
             TraderToken.Name.English("Trader Token");
             TraderToken.Description.English("Special token for completing quests");
             TraderToken.Configurable = Configurability.Disabled;
+            if (TraderToken.Prefab.TryGetComponent(out ItemDrop token))
+            {
+                GambleUI.m_defaultIcon = token.m_itemData.GetIcon();
+            }
             
             Item TraderRing = new Item(Assets, "TraderRing_RS");
+            var component = TraderRing.Prefab.GetComponent<ItemDrop>();
+            component.m_itemData.m_shared.m_name = Keys.TraderRing;
+            component.m_itemData.m_shared.m_name = Keys.TraderRingDesc;
             TraderRing.Name.English("Trader Ring");
             TraderRing.Description.English("Helps find trader treasures");
             TraderRing.Configurable = Configurability.Disabled;
-            var component = TraderRing.Prefab.GetComponent<ItemDrop>();
             var status = ScriptableObject.CreateInstance<TreasureFinder>();
             status.name = "SE_TreasureFinder";
             status.m_name = Keys.TraderRing;
             status.m_icon = component.m_itemData.GetIcon();
             component.m_itemData.m_shared.m_equipStatusEffect = status;
+
+            Item TraderMap = new Item(Assets, "TraderMap_RS");
+            TraderMap.Name.English("Treasure Map");
+            TraderMap.Description.English("Collectible");
+            TraderMap.Configurable = Configurability.Disabled;
 
             BountySystem.SetupSync();
             Assembly assembly = Assembly.GetExecutingAssembly();

@@ -8,8 +8,20 @@ namespace TraderQuests.Quest;
 public static class QuestSystem
 {
     private const float maxRadius = 9500f;
-    private static float m_checkTimer;
     private const float m_checkInterval = 5f;
+    private static float m_checkTimer;
+    private static bool m_playerDataLoaded;
+
+    [HarmonyPatch(typeof(Game), nameof(Game.Logout))]
+    private static class Game_Logout_Patch
+    {
+        private static void Postfix()
+        {
+            m_playerDataLoaded = false;
+            TreasureSystem.Reset();
+            BountySystem.Reset();
+        }
+    }
 
     [HarmonyPatch(typeof(Player), nameof(Player.Update))]
     private static class Player_Update_Patch
@@ -18,7 +30,7 @@ public static class QuestSystem
         {
             if (__instance != Player.m_localPlayer) return;
             if (__instance.IsDead() || __instance.IsTeleporting()) return;
-            m_checkTimer += Time.fixedTime;
+            m_checkTimer += Time.deltaTime;
             if (m_checkTimer < m_checkInterval) return;
             m_checkTimer = 0.0f;
             BountySystem.CheckActiveBounties(__instance);
@@ -44,16 +56,30 @@ public static class QuestSystem
             TreasureSystem.UpdateServerTreasures();
             Shop.UpdateServerStore();
             BountySystem.UpdateServerBounties();
+            TraderOverride.UpdateServer();
+            GambleSystem.UpdateServer();
+        }
+    }
+
+    [HarmonyPatch(typeof(Game), nameof(Game.SpawnPlayer))]
+    private static class Game_SpawnPlayer_Patch
+    {
+        private static void Postfix(Player __result)
+        {
+            if (m_playerDataLoaded) return;
+            BountySystem.LoadPlayerData(__result);
+            TreasureSystem.LoadPlayerData(__result);
+            m_playerDataLoaded = true;
         }
     }
 
     [HarmonyPatch(typeof(Player), nameof(Player.Save))]
     private static class Player_Save_Patch
     {
-        private static void Prefix()
+        private static void Prefix(Player __instance)
         {
-            BountySystem.SaveToPlayer();
-            TreasureSystem.SaveToPlayer();
+            BountySystem.SaveToPlayer(__instance);
+            TreasureSystem.SaveToPlayer(__instance);
         }
     }
     

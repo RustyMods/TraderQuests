@@ -27,11 +27,11 @@ public static class BountySystem
 
     public static BountyData? SelectedBounty;
     public static BountyData? SelectedActiveBounty;
-    private static readonly Dictionary<string, BountyData> AllBounties = new();
-    private static Dictionary<string, BountyData> AvailableBounties = new();
+    public static readonly Dictionary<string, BountyData> AllBounties = new();
+    private static readonly Dictionary<string, BountyData> AvailableBounties = new();
     public static readonly Dictionary<string, BountyData> ActiveBounties = new();
     private static Dictionary<string, long> CompletedBounties = new();
-    private static readonly List<BountyData> CurrentBounties = new();
+    private static readonly List<BountyData> LoadedBounties = new();
 
     private static double LastLoadedTime;
 
@@ -43,24 +43,6 @@ public static class BountySystem
         {
             if (!ZNetScene.instance) return;
             SetupBounties();
-        }
-    }
-
-    public static void UpdateMinimap()
-    {
-        // Remove all pins
-        foreach (var bounty in ActiveBounties.Values)
-        {
-            if (bounty.PinData is null) continue;
-            Minimap.instance.RemovePin(bounty.PinData);
-        }
-        // Add all pins
-        foreach (var bounty in ActiveBounties.Values)
-        {
-            if (bounty.PinData is not null) continue;
-            Minimap.PinData pin = Minimap.m_instance.AddPin(bounty.Position, Minimap.PinType.Boss, bounty.Config.Name, false, false);
-            pin.m_icon = bounty.Icon;
-            bounty.PinData = pin;
         }
     }
 
@@ -102,7 +84,7 @@ public static class BountySystem
 
     public static void Init()
     {
-        Configs = LoadFiles();
+        LoadFiles();
 
         ServerBounties.ValueChanged += () =>
         {
@@ -114,54 +96,103 @@ public static class BountySystem
                 Configs = deserializer.Deserialize<List<BountyConfig>>(ServerBounties.Value);
                 LastLoadedTime = 0.0;
                 SetupBounties();
+                LoadPlayerData(Player.m_localPlayer);
             }
             catch
             {
                 TraderQuestsPlugin.TraderQuestsLogger.LogWarning("Failed to deserialize server bounties");
             }
         };
+        
+        SetupFileWatch();
+    }
+
+    private static void Reload()
+    {
+        if (!ZNet.m_instance || !ZNet.m_instance.IsServer()) return;
+        LoadFiles();
+        SetupBounties();
+        UpdateServerBounties();
+        if (Player.m_localPlayer) LoadPlayerData(Player.m_localPlayer);
+    }
+
+    private static void SetupFileWatch()
+    {
+        FileSystemWatcher watcher = new FileSystemWatcher(BountyFolderPath, "*.yml");
+        void OnFileChange(object sender, FileSystemEventArgs args) => Reload();
+        watcher.Changed += OnFileChange;
+        watcher.Created += OnFileChange;
+        watcher.Deleted += OnFileChange;
+        watcher.IncludeSubdirectories = true;
+        watcher.SynchronizingObject = ThreadingHelper.SynchronizingObject;
+        watcher.EnableRaisingEvents = true;
     }
 
     public static void UpdateServerBounties()
     {
+        if (!ZNet.m_instance || !ZNet.m_instance.IsServer()) return;
         if (Configs.Count <= 0) return;
         var serializer = new SerializerBuilder().Build();
         ServerBounties.Value = serializer.Serialize(Configs);
     }
 
-    private static List<BountyConfig> LoadFiles()
+    private static void LoadFiles()
     {
         if (!Directory.Exists(TraderQuestsPlugin.FolderPath)) Directory.CreateDirectory(TraderQuestsPlugin.FolderPath);
         if (!Directory.Exists(BountyFolderPath)) Directory.CreateDirectory(BountyFolderPath);
+        Configs.Clear();
         var files = Directory.GetFiles(BountyFolderPath, "*.yml", SearchOption.AllDirectories);
         if (files.Length <= 0)
         {
-            var data = GetDefaultBounties();
-            var serializer = new SerializerBuilder().Build();
-            foreach (var config in data)
+            Configs = GetDefaultBounties();
+            Dictionary<string, List<BountyConfig>> sortedData = new();
+            foreach (var config in Configs)
             {
-                var fileName = $"{config.UniqueID}.yml";
-                File.WriteAllText(BountyFolderPath + Path.DirectorySeparatorChar + fileName, serializer.Serialize(config));
+                if (sortedData.TryGetValue(config.Biome, out List<BountyConfig> list))
+                {
+                    list.Add(config);
+                }
+                else
+                {
+                    sortedData[config.Biome] = new List<BountyConfig>() { config };
+                }
             }
+            
+            var serializer = new SerializerBuilder().Build();
 
-            return data;
+            foreach (var kvp in sortedData)
+            {
+                var prefix = kvp.Key switch
+                {
+                    "Meadows" => "0001",
+                    "BlackForest" => "0002",
+                    "Swamp" => "0003",
+                    "Mountains" => "0004",
+                    "Plains" => "0005",
+                    "Mistlands" => "0006",
+                    "AshLands" => "0007",
+                    "DeepNorth" => "0008",
+                    "Ocean" => "0009",
+                    _ => "0000"
+                };
+                var filePath = BountyFolderPath + Path.DirectorySeparatorChar + $"{prefix}.{kvp.Key}.yml";
+                File.WriteAllText(filePath, serializer.Serialize(kvp.Value));
+            }
         }
 
-        List<BountyConfig> configs = new();
-        foreach (var file in files)
+        foreach (var filePath in files)
         {
             var deserializer = new DeserializerBuilder().Build();
             try
             {
-                configs.Add(deserializer.Deserialize<BountyConfig>(File.ReadAllText(file)));
+                var data = deserializer.Deserialize<List<BountyConfig>>(File.ReadAllText(filePath));
+                Configs.AddRange(data);
             }
             catch
             {
-                TraderQuestsPlugin.TraderQuestsLogger.LogWarning("Failed to deserialize file: " + Path.GetFileName(file));
+                TraderQuestsPlugin.TraderQuestsLogger.LogWarning("Failed to deserialize file: " + Path.GetFileName(filePath));
             }
         }
-
-        return configs;
     }
     
     private static void SetupBounties()
@@ -173,9 +204,8 @@ public static class BountySystem
             bounty.Setup();
             if (!bounty.IsValid) continue;
             AllBounties[bounty.Config.UniqueID] = bounty;
+            AvailableBounties[bounty.Config.UniqueID] = bounty;
         }
-        AvailableBounties = new Dictionary<string, BountyData>(AllBounties);
-        LoadPlayerData();
     }
     
     public static void LoadAvailable()
@@ -200,26 +230,28 @@ public static class BountySystem
             }
         }
 
-        if (CurrentBounties.Count <= 0 || LastLoadedTime == 0.0 || ZNet.m_instance.GetTimeSeconds() - LastLoadedTime > TraderQuestsPlugin.BountyCooldown.Value * 60)
+        bool reloadPositions = false;
+        if (LoadedBounties.Count <= 0 || LastLoadedTime == 0.0 || ZNet.m_instance.GetTimeSeconds() - LastLoadedTime > TraderQuestsPlugin.BountyCooldown.Value * 60)
         {
-            CurrentBounties.Clear();
+            LoadedBounties.Clear();
             List<BountyData> bounties = AvailableBounties.Values.Where(bounty => bounty.HasRequiredKey()).ToList();
             for (int index = 0; index < TraderQuestsPlugin.MaxBountyDisplayed.Value; ++index)
             {
                 if (GetRandomWeightedBounty(bounties) is not { } bounty) continue;
                 bounties.Remove(bounty);
-                CurrentBounties.Add(bounty);
+                LoadedBounties.Add(bounty);
             }
 
             LastLoadedTime = ZNet.m_instance.GetTimeSeconds();
+            reloadPositions = true;
         }
         
-        foreach (var bounty in CurrentBounties)
+        foreach (var bounty in LoadedBounties)
         {
-            SetupItem(Object.Instantiate(TraderUI.m_item, TraderUI.m_instance.m_listRoot), bounty, false);
+            SetupItem(Object.Instantiate(TraderUI.m_item, TraderUI.m_instance.m_listRoot), bounty, false, reloadPositions);
         }
         
-        TraderUI.m_instance.ResizeListRoot(CurrentBounties.Count);
+        TraderUI.m_instance.ResizeListRoot(LoadedBounties.Count);
     }
 
     private static BountyData? GetRandomWeightedBounty(List<BountyData> data)
@@ -248,12 +280,12 @@ public static class BountySystem
         if (TraderUI.m_item is null || !TraderUI.m_instance) return;
         foreach (var bounty in ActiveBounties.Values)
         {
-            SetupItem(Object.Instantiate(TraderUI.m_item, TraderUI.m_instance.m_activeRoot), bounty, true);
+            SetupItem(Object.Instantiate(TraderUI.m_item, TraderUI.m_instance.m_activeRoot), bounty, true, false);
         }
         TraderUI.m_instance.ResizeActiveListRoot(ActiveBounties.Count);
     }
     
-    private static void SetupItem(GameObject item, BountyData data, bool active)
+    private static void SetupItem(GameObject item, BountyData data, bool active, bool reloadPositions)
     {
         if (!item.TryGetComponent(out ItemUI component)) return;
         bool enable = data.HasRequirements();
@@ -263,7 +295,7 @@ public static class BountySystem
         component.SetCurrency(data.CurrencyIcon, enable);
         component.SetPrice(data.Config.Price.ToString(), enable);
         component.SetSelected(enable);
-        component.m_button.onClick.AddListener(() => data.OnSelected(component, enable, active));
+        component.m_button.onClick.AddListener(() => data.OnSelected(component, enable, active, reloadPositions));
     }
     private static List<BountyConfig> GetDefaultBounties()
     {
@@ -625,10 +657,23 @@ public static class BountySystem
             server.m_rpc.Invoke(nameof(QuestSystem.RPC_RemoveRecord), pkg);
         }
     }
-    public static void SaveToPlayer()
+
+    public static void Reset()
     {
-        if (!Player.m_localPlayer) return;
+        ActiveBounties.Clear();
+        foreach(var bounty in AllBounties.Values) bounty.ClearData();
+    }
+
+    public static void ClearPlayerData(Player player)
+    {
+        player.m_customData.Remove("ActiveBounties");
+        player.m_customData.Remove("CompletedBounties");
+    }
+    public static void SaveToPlayer(Player player)
+    {
         var serializer = new SerializerBuilder().Build();
+        player.m_customData.Remove("ActiveBounties");
+        player.m_customData.Remove("CompletedBounties");
         if (ActiveBounties.Count > 0)
         {
             Dictionary<string, string> BountyPos = new();
@@ -636,20 +681,18 @@ public static class BountySystem
             {
                 BountyPos[bounty.Config.UniqueID] = bounty.FormatPosition();
             }
-
-            Player.m_localPlayer.m_customData["ActiveBounties"] = serializer.Serialize(BountyPos);
+            player.m_customData["ActiveBounties"] = serializer.Serialize(BountyPos);
         }
 
         if (CompletedBounties.Count > 0)
         {
-            Player.m_localPlayer.m_customData["CompletedBounties"] = serializer.Serialize(CompletedBounties);
+            player.m_customData["CompletedBounties"] = serializer.Serialize(CompletedBounties);
         }
     }
-    private static void LoadPlayerData()
+    public static void LoadPlayerData(Player player)
     {
-        if (!Player.m_localPlayer) return;
         var deserializer = new DeserializerBuilder().Build();
-        if (Player.m_localPlayer.m_customData.TryGetValue("ActiveBounties", out string activeData))
+        if (player.m_customData.TryGetValue("ActiveBounties", out string activeData))
         {
             Dictionary<string, string> activeBounties = deserializer.Deserialize<Dictionary<string, string>>(activeData);
             foreach (var kvp in activeBounties)
@@ -662,7 +705,7 @@ public static class BountySystem
             }
         }
 
-        if (Player.m_localPlayer.m_customData.TryGetValue("CompletedBounties", out string completedData))
+        if (player.m_customData.TryGetValue("CompletedBounties", out string completedData))
         {
             Dictionary<string, long> completedBounties =
                 deserializer.Deserialize<Dictionary<string, long>>(completedData);
@@ -730,9 +773,20 @@ public static class BountySystem
         private bool Completed;
         public bool Spawned;
         private long CompletedOn;
+        public bool Active;
         public BountyData(BountyConfig config) => Config = config;
 
-        public void OnSelected(ItemUI component, bool enable, bool active)
+        public void ClearData()
+        {
+            KilledCreatureCount = 0;
+            CompletedOn = 0L;
+            Spawned = false;
+            Completed = false;
+            Position = Vector3.zero;
+            Active = false;
+        }
+
+        public void OnSelected(ItemUI component, bool enable, bool active, bool reloadPos)
         {
             TraderUI.m_instance.DeselectAll();
             TraderUI.m_instance.SetDefaultButtonTextColor();
@@ -745,15 +799,18 @@ public static class BountySystem
             }
             else
             {
-                if (!QuestSystem.FindSpawnLocation(Biome, out Vector3 position))
+                if (Position == Vector3.zero || reloadPos)
                 {
-                    Player.m_localPlayer.Message(MessageHud.MessageType.Center, "Failed to generate spawn location");
-                    return;
+                    if (!QuestSystem.FindSpawnLocation(Biome, out Vector3 position))
+                    {
+                        Player.m_localPlayer.Message(MessageHud.MessageType.Center, "Failed to generate spawn location");
+                        return;
+                    }
+                    Position = position;
                 }
-                Position = position;
                 SelectedBounty = this;
                 TreasureSystem.SelectedTreasure = null;
-                TraderUI.m_instance.m_selectButtonText.color = enable ? new Color32(255, 164, 0, 255) : Color.gray;
+                TraderUI.m_instance.setSelectButtonColor(enable);
             }
             TraderUI.m_instance.SetTooltip(GetTooltip());
             TraderUI.m_instance.SetCurrencyIcon(CurrencyIcon);
@@ -796,6 +853,7 @@ public static class BountySystem
 
             CompletedBounties[Config.UniqueID] = CompletedOn;
             ActiveBounties.Remove(Config.UniqueID);
+            Active = false;
         }
 
         public void SetCompleted(bool completed, long timeCompleted)
@@ -901,7 +959,7 @@ public static class BountySystem
         private bool ValidateIcon()
         {
             if (ObjectDB.instance.GetItemPrefab(Config.IconPrefab) is { } iconPrefab &&
-                iconPrefab.TryGetComponent(out ItemDrop component))
+                iconPrefab.TryGetComponent(out ItemDrop component) && component.m_itemData.m_shared.m_icons.Length > 0)
             {
                 Icon = component.m_itemData.GetIcon();
                 return true;
@@ -932,8 +990,10 @@ public static class BountySystem
                 if (!Player.m_localPlayer.GetInventory().AddItem(CurrencyPrefab, Config.Price)) return false;
             }
             AvailableBounties[Config.UniqueID] = this;
-            CurrentBounties.Add(this);
+            LoadedBounties.Add(this);
             ActiveBounties.Remove(Config.UniqueID);
+            Active = false;
+            Minimap.m_instance.RemovePin(PinData);
             return true;
         }
         public bool Activate(bool checkRequirements = true)
@@ -945,11 +1005,19 @@ public static class BountySystem
             }
 
             AvailableBounties.Remove(Config.UniqueID);
-            CurrentBounties.Remove(this);
+            LoadedBounties.Remove(this);
             ActiveBounties[Config.UniqueID] = this;
+            AddPin();
+            Active = true;
             SelectedBounty = null;
-            UpdateMinimap();
             return true;
+        }
+
+        private void AddPin()
+        {
+            Minimap.PinData pin = Minimap.m_instance.AddPin(Position, Minimap.PinType.Boss, Config.Name, false, false);
+            pin.m_icon = Icon;
+            PinData = pin;
         }
 
         public string FormatPosition() => $"{Position.x}_{Position.y}_{Position.z}";

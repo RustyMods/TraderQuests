@@ -37,7 +37,6 @@ public class Treasure : MonoBehaviour
     }
     public void Update()
     {
-        if (m_data is null) return;
         if (m_pin is not null)
         {
             m_pin.m_pos = transform.position;
