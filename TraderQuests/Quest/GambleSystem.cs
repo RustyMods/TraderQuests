@@ -35,27 +35,29 @@ public static class GambleSystem
         if (!Directory.Exists(TraderQuestsPlugin.FolderPath)) Directory.CreateDirectory(TraderQuestsPlugin.FolderPath);
         if (!Directory.Exists(GambleFolderPath)) Directory.CreateDirectory(GambleFolderPath);
         Configs = GetDefaultConfigs();
+        var deserializer = new DeserializerBuilder().Build();
         var files = Directory.GetFiles(GambleFolderPath, "*.yml", SearchOption.AllDirectories);
         if (files.Length <= 0)
         {
             var serializer = new SerializerBuilder().Build();
             var filePath = GambleFolderPath + Path.DirectorySeparatorChar + "0001.Gambler.yml";
             File.WriteAllText(filePath, serializer.Serialize(Configs));
-            return;
         }
-        Configs.Clear();
-        var deserializer = new DeserializerBuilder().Build();
-        foreach (var filePath in files)
+        else
         {
-            var fileName = Path.GetFileName(filePath);
-            try
+            Configs.Clear();
+            foreach (var filePath in files)
             {
-                var data = deserializer.Deserialize<List<GambleConfig>>(File.ReadAllText(filePath));
-                Configs.AddRange(data);
-            }
-            catch
-            {
-                TraderQuestsPlugin.TraderQuestsLogger.LogWarning("Failed to deserialize gamble file: " + fileName);
+                var fileName = Path.GetFileName(filePath);
+                try
+                {
+                    var data = deserializer.Deserialize<List<GambleConfig>>(File.ReadAllText(filePath));
+                    Configs.AddRange(data);
+                }
+                catch
+                {
+                    TraderQuestsPlugin.TraderQuestsLogger.LogWarning("Failed to deserialize gamble file: " + fileName);
+                }
             }
         }
         SetupFileWatch();

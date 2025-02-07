@@ -69,6 +69,9 @@ public class TraderUI : MonoBehaviour
     public GameObject m_itemList = null!;
     public GameObject m_tooltipPanel = null!;
     public GameObject m_gamblePanel = null!;
+
+    public Button m_selectButton = null!;
+    public Button m_cancelButton = null!;
     
     public string CurrentTopic = "$button_bounty";
 
@@ -134,6 +137,8 @@ public class TraderUI : MonoBehaviour
             GambleUI.m_instance.LoadRandomIcons();
             GambleUI.m_instance.ResetTooltips();
             GambleUI.m_instance.SetupReward(GambleSystem.GetItem());
+            m_selectButton.gameObject.SetActive(false);
+            
             
         }
         else
@@ -141,6 +146,7 @@ public class TraderUI : MonoBehaviour
             m_itemList.SetActive(true);
             m_tooltipPanel.SetActive(true);
             m_gamblePanel.SetActive(false);
+            m_selectButton.gameObject.SetActive(true);
         }
     }
     public void SetCurrentCurrency(string text) => m_currencyText.text = text;
@@ -259,77 +265,113 @@ public class TraderUI : MonoBehaviour
                     });
                     break;
                 case "$button_select":
-                    button.onClick.AddListener(() =>
-                    {
-                        switch (CurrentTopic)
-                        {
-                            case "$button_bounty":
-                                if (BountySystem.SelectedBounty is null) return;
-                                if (!BountySystem.SelectedBounty.Activate()) return;
-                                break;
-                            case "$button_treasure":
-                                if (TreasureSystem.SelectedTreasure is null) return;
-                                if (!TreasureSystem.SelectedTreasure.Activate()) return;
-                                break;
-                            case "$button_shop":
-                                if (Shop.SelectedItem is null) return;
-                                if (!Shop.SelectedItem.Purchase(false)) return;
-                                break;
-                            case "$button_gamble":
-                                if (GambleUI.m_instance.m_item is null) return;
-                                if (!GambleUI.m_instance.m_item.CollectReward()) return;
-                                break;
-                        }
-
-                        UpdatePanel();
-                    });
+                    m_selectButton = button;
+                    button.onClick.AddListener(OnSelect);
                     break;
                 case "$button_cancel":
-                    button.onClick.AddListener(() =>
-                    {
-                        switch (CurrentTopic)
-                        {
-                            case "$button_bounty":
-                                if (BountySystem.SelectedActiveBounty is null) return;
-                                if (BountySystem.SelectedActiveBounty.IsComplete())
-                                {
-                                    BountySystem.SelectedActiveBounty.CollectReward(Player.m_localPlayer);
-                                }
-                                else
-                                {
-                                    if (!BountySystem.SelectedActiveBounty.Deactivate(true)) return;
-                                }
-                                BountySystem.SelectedActiveBounty = null;
-                                UpdatePanel();
-                                break;
-                            case "$button_treasure":
-                                if (TreasureSystem.SelectedActiveTreasure is null) return;
-                                if (!TreasureSystem.SelectedActiveTreasure.Deactivate(true)) return;
-                                TreasureSystem.SelectedActiveTreasure = null;
-                                UpdatePanel();
-                                break;
-                            case "$button_shop":
-                                if (Shop.SelectedSaleItem is null) return;
-                                if (!Shop.SelectedSaleItem.Purchase(true)) return;
-                                UpdatePanel();
-                                break;
-                            case "$button_gamble":
-                                GambleUI.m_instance.Roll();
-                                break;
-                        }
-                    });
+                    m_cancelButton = button;
+                    button.onClick.AddListener(OnCancel);
                     break;
                 case "$button_refresh":
-                    button.onClick.AddListener(() =>
-                    {
-                        UpdateTopic();
-                        UpdatePanel();
-                    });
+                    button.onClick.AddListener(OnRefresh);
                     break;
             }
+
+            button.gameObject.AddComponent<ButtonSfx>().m_sfxPrefab = Assets.ButtonSFX.m_sfxPrefab;
         }
 
         SetDefaultButtonTextColor();
+    }
+    private void OnSelect()
+    {
+        switch (CurrentTopic)
+        {
+            case "$button_bounty":
+                if (BountySystem.SelectedBounty is null) return;
+                if (!BountySystem.SelectedBounty.Activate()) return;
+                break;
+            case "$button_treasure":
+                if (TreasureSystem.SelectedTreasure is null) return;
+                if (!TreasureSystem.SelectedTreasure.Activate()) return;
+                break;
+            case "$button_shop":
+                if (Shop.SelectedItem is null) return;
+                if (!Shop.SelectedItem.Purchase(false)) return;
+                break;
+            case "$button_gamble":
+                if (GambleUI.m_instance.m_item is null) return;
+                if (!GambleUI.m_instance.m_item.CollectReward()) return;
+                break;
+        }
+
+        UpdatePanel();
+    }
+
+    private void OnCancelBounty()
+    {
+        if (BountySystem.SelectedActiveBounty is null) return;
+        if (BountySystem.SelectedActiveBounty.IsComplete())
+        {
+            BountySystem.SelectedActiveBounty.CollectReward(Player.m_localPlayer);
+        }
+        else
+        {
+            if (!BountySystem.SelectedActiveBounty.Deactivate(TraderQuestsPlugin.BountyReturnCost.Value is TraderQuestsPlugin.Toggle.On)) return;
+        }
+        BountySystem.SelectedActiveBounty = null;
+        UpdatePanel();
+    }
+
+    private void OnCancelTreasure()
+    {
+        if (TreasureSystem.SelectedActiveTreasure is null) return;
+        if (!TreasureSystem.SelectedActiveTreasure.Deactivate(TraderQuestsPlugin.TreasureReturnCost.Value is TraderQuestsPlugin.Toggle.On)) return;
+        TreasureSystem.SelectedActiveTreasure = null;
+        UpdatePanel();
+    }
+
+    private void OnPurchaseSale()
+    {
+        if (Shop.SelectedSaleItem is null) return;
+        if (!Shop.SelectedSaleItem.Purchase(true)) return;
+        UpdatePanel();
+    }
+
+    private void OnGamble()
+    {
+        if (GambleUI.m_instance.m_item is null || !GambleUI.m_instance.m_item.Completed)
+        {
+            GambleUI.m_instance.Roll();
+        }
+        else
+        {
+            if (!GambleUI.m_instance.m_item.CollectReward()) return;
+        }
+    }
+
+    private void OnCancel()
+    {
+        switch (CurrentTopic)
+        {
+            case "$button_bounty":
+                OnCancelBounty();
+                break;
+            case "$button_treasure":
+                OnCancelTreasure();
+                break;
+            case "$button_shop":
+                OnPurchaseSale();
+                break;
+            case "$button_gamble":
+                OnGamble();
+                break;
+        }
+    }
+
+    private void OnRefresh()
+    {
+        UpdateTopic();
+        UpdatePanel();
     }
     
     public void SetCancelButtonColor(bool enable) => m_cancelButtonText.color = enable ? new Color32(255, 164, 0, 255) : Color.gray;

@@ -217,14 +217,13 @@ public class GambleUI : MonoBehaviour
         {
             ResetTooltips();
             SetTooltip($"\n<color=red>{Keys.NoGambleItems}</color>");
-            TraderUI.m_instance.SetCancelButtonColor(false);
-            TraderUI.m_instance.setSelectButtonColor(false);
             SetIconsColor(false);
             return;
         }
         m_count = Random.Range(3, 5);
         SetRewardItem(item, m_count);
-        TraderUI.m_instance.setSelectButtonColor(false);
+        TraderUI.m_instance.SetSelectionButtons(Keys.Roll, Keys.Roll);
+
     }
 
     public void SetTooltip(string tooltip) => m_infoText.text = Localization.m_instance.Localize(tooltip);
@@ -280,7 +279,6 @@ public class GambleUI : MonoBehaviour
         var title = item.Config.Amount > 1 ? $"{item.SharedName} x{item.Config.Amount}" : item.SharedName;
         SetItemText($"\n<color=orange>{title}</color>\n\n{itemData.GetTooltip()}");
         ResizeTextRoots();
-        TraderUI.m_instance.SetCancelButtonColor(true);
         UpdateCurrentCurrency();
     }
 
@@ -299,7 +297,7 @@ public class GambleUI : MonoBehaviour
         Player.m_localPlayer.GetInventory().RemoveItem(m_item.CurrencySharedName, m_item.Config.Price);
         SetIconsColor(true);
         LoadRandomIcons(new(){m_item.Config.PrefabName});
-        if (Random.Range(0f, 100f) >= m_item.Config.SuccessChance)
+        if (Random.Range(0f, 100f) <= m_item.Config.SuccessChance)
         {
             SetupSuccess();
         }
@@ -317,7 +315,6 @@ public class GambleUI : MonoBehaviour
             accumulatedDelay += randomDelay;
         }
 
-        TraderUI.m_instance.SetCancelButtonColor(false);
         UpdateCurrentCurrency();
         m_roll = true;
     }
@@ -325,7 +322,6 @@ public class GambleUI : MonoBehaviour
     public void Stop()
     {
         m_roll = false;
-        TraderUI.m_instance.SetCancelButtonColor(true);
         if (!m_success) OnFailed();
         else OnSuccess();
     }
@@ -348,7 +344,7 @@ public class GambleUI : MonoBehaviour
         m_failedEffects.Create(StoreGui.m_instance.m_trader.transform.position, Quaternion.identity);
         SetIconsColor(false);
         m_item.Completed = false;
-        Player.m_localPlayer.Message(MessageHud.MessageType.Center, "Try again next time!");
+        Player.m_localPlayer.Message(MessageHud.MessageType.Center, Keys.OnFail);
     }
 
     public void OnSuccess()
@@ -357,9 +353,8 @@ public class GambleUI : MonoBehaviour
         m_successEffects.Create(StoreGui.m_instance.m_trader.transform.position, Quaternion.identity);
         SetIconsColor(false);
         m_item.Completed = true;
-        TraderUI.m_instance.SetCancelButtonColor(false);
-        TraderUI.m_instance.setSelectButtonColor(true);
-        Player.m_localPlayer.Message(MessageHud.MessageType.Center, "Success!");
+        TraderUI.m_instance.SetSelectionButtons(Keys.Collect, Keys.Collect);
+        Player.m_localPlayer.Message(MessageHud.MessageType.Center, Keys.OnSuccess);
     }
 
     private void SetIconsColor(bool reset)

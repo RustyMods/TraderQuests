@@ -32,4 +32,6 @@ public static class Keys
 
     public const string RequiredMatches = "$trader_required_matches";
     public const string NoGambleItems = "$trader_no_gamble_items";
+    public const string OnSuccess = "$trader_on_success";
+    public const string OnFail = "$trader_on_fail";
 }

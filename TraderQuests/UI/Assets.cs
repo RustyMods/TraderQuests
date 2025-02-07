@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using HarmonyLib;
+using UnityEngine;
 using UnityEngine.UI;
 
 namespace TraderQuests.UI;
@@ -14,6 +15,7 @@ public static class Assets
     public static Sprite ScrollHandle = null!;
     public static Sprite ListBackground = null!;
     public static Sprite RefreshImage = null!;
+    public static ButtonSfx ButtonSFX = null!;
 
     public static void CacheAssets(StoreGui store)
     {
@@ -28,5 +30,16 @@ public static class Assets
         ItemMat = store.transform.Find("Store/SellPanel/SellButton/Image").GetComponent<Image>().material;
         ListBackground = Utils.FindChild(store.transform, "Items").GetComponent<Image>().sprite;
         RefreshImage = store.transform.Find("Store/SellPanel/SellButton/Image (1)").GetComponent<Image>().sprite;
+    }
+
+    [HarmonyPatch(typeof(InventoryGui), nameof(InventoryGui.Awake))]
+    private static class InventoryGUI_Awake_Patch
+    {
+        private static void Postfix(InventoryGui __instance) => CacheSFX(__instance);
+    }
+
+    private static void CacheSFX(InventoryGui inventoryGui)
+    {
+        ButtonSFX = inventoryGui.GetComponentInChildren<ButtonSfx>();
     }
 }

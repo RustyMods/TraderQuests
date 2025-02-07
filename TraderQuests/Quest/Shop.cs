@@ -45,7 +45,7 @@ public static class Shop
             {
                 try
                 {
-                    Configs = deserializer.Deserialize<List<ItemConfig>>(file);
+                    Configs = deserializer.Deserialize<List<ItemConfig>>(File.ReadAllText(file));
                 }
                 catch
                 {

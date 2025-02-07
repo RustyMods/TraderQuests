@@ -44,8 +44,10 @@ namespace TraderQuests
         public static ConfigEntry<Toggle> BountyEnabled = null!;
         public static ConfigEntry<Toggle> TreasureEnabled = null!;
         public static ConfigEntry<Toggle> StoreEnabled = null!;
+        public static ConfigEntry<Toggle> BountyReturnCost = null!;
         public static ConfigEntry<int> MaxBountyDisplayed = null!;
         public static ConfigEntry<int> MaxActiveBounties = null!;
+        public static ConfigEntry<Toggle> TreasureReturnCost = null!;
         public static ConfigEntry<double> TreasureCooldown = null!;
         public static ConfigEntry<int> MaxTreasureDisplayed = null!;
         public static ConfigEntry<int> MaxActiveTreasures = null!;
@@ -100,10 +102,12 @@ namespace TraderQuests
             OverrideStore = config("2 - Settings", "Override Trader", Toggle.Off, "If on, vanilla store will use loaded YML data");
 
             BountyEnabled = config("Bounty", "Enabled", Toggle.On, "If on, bounties enabled");
+            BountyReturnCost = config("Bounty", "Return Cost", Toggle.On, "If on, canceling a bounty will return cost to user");
             BountyCooldown = config("Bounty", "Cooldown", 60.0, "Set duration between new bounties, in minutes");
             MaxBountyDisplayed = config("Bounty", "Max Available", 10, "Set max amount of available bounties displayed");
             MaxActiveBounties = config("Bounty", "Max Active", 10, "Set max amount of active bounties");
 
+            TreasureReturnCost = config("Treasure", "Return Cost", Toggle.On, "If on, canceling a treasure hunt will return cost to user");
             TreasureEnabled = config("Treasure", "Enabled", Toggle.On, "If on, treasure hunt enabled");
             TreasureCooldown = config("Treasure", "Cooldown", 60.0, "Set duration between new treasures, in minutes");
             MaxTreasureDisplayed = config("Treasure", "Max Available", 10, "Set max amount of available treasures displayed");
