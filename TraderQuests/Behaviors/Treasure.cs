@@ -13,10 +13,7 @@ public class Treasure : MonoBehaviour
     public ZNetView m_nview = null!;
     public HoverText m_hoverText = null!;
     private TreasureSystem.TreasureData? m_data;
-
     public string m_recordID = "";
-    private Minimap.PinData? m_pin;
-
     public float m_range = 20f;
     private static readonly List<Treasure> m_instances = new List<Treasure>();
     
@@ -35,28 +32,11 @@ public class Treasure : MonoBehaviour
         }
         m_instances.Add(this);
     }
-    public void Update()
-    {
-        if (m_pin is not null)
-        {
-            m_pin.m_pos = transform.position;
-        }
-        else AddPin();
-    }
+
     public void OnDestroy()
     {
         m_instances.Remove(this);
-        if (m_pin is null) return;
-        Minimap.m_instance.RemovePin(m_pin);
     }
-    private void AddPin()
-    {
-        if (m_pin is not null || m_data is null) return;
-        m_pin = Minimap.m_instance.AddPin(transform.position, Minimap.PinType.RandomEvent, m_data.Config.Name, false, false);
-        m_pin.m_doubleSize = true;
-        m_pin.m_animate = true;
-    }
-
     public void SetData(TreasureSystem.TreasureData data)
     {
         SetRecordID(data.Config.UniqueID);
@@ -78,7 +58,6 @@ public class Treasure : MonoBehaviour
 
     public void SetRecordID(string recordID) => m_nview.GetZDO().Set("RecordID".GetStableHashCode(), recordID);
     private string GetRecordID() => m_nview.GetZDO().GetString("RecordID".GetStableHashCode());
-
     public void OnDestroyed()
     {
         if (m_data is null) return;

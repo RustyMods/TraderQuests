@@ -21,7 +21,7 @@ namespace TraderQuests
     public class TraderQuestsPlugin : BaseUnityPlugin
     {
         internal const string ModName = "TraderQuests";
-        internal const string ModVersion = "1.0.0";
+        internal const string ModVersion = "1.0.2";
         internal const string Author = "RustyMods";
         private const string ModGUID = Author + "." + ModName;
         private static readonly string ConfigFileName = ModGUID + ".cfg";
@@ -38,15 +38,18 @@ namespace TraderQuests
         public static readonly string FolderPath = Paths.ConfigPath + Path.DirectorySeparatorChar + "TraderQuests";
         
         private static ConfigEntry<Toggle> _serverConfigLocked = null!;
+        public static ConfigEntry<KeyType> RequiredKeyType = null!;
         public static ConfigEntry<Vector2> PanelPosition = null!;
         public static ConfigEntry<TraderUI.FontOptions> Font = null!;
         public static ConfigEntry<double> BountyCooldown = null!;
         public static ConfigEntry<Toggle> BountyEnabled = null!;
         public static ConfigEntry<Toggle> TreasureEnabled = null!;
         public static ConfigEntry<Toggle> StoreEnabled = null!;
+        public static ConfigEntry<Toggle> ShowAllBounties = null!;
         public static ConfigEntry<Toggle> BountyReturnCost = null!;
         public static ConfigEntry<int> MaxBountyDisplayed = null!;
         public static ConfigEntry<int> MaxActiveBounties = null!;
+        public static ConfigEntry<Toggle> ShowAllTreasures = null!;
         public static ConfigEntry<Toggle> TreasureReturnCost = null!;
         public static ConfigEntry<double> TreasureCooldown = null!;
         public static ConfigEntry<int> MaxTreasureDisplayed = null!;
@@ -66,11 +69,15 @@ namespace TraderQuests
             None, Haldor, Hildir, Custom, All
         }
 
+        public enum KeyType
+        {
+            Global, Player, None
+        }
+
 
         private void InitConfigs()
         {
-            _serverConfigLocked = config("1 - General", "Lock Configuration", Toggle.On,
-                "If on, the configuration is locked and can be changed by server admins only.");
+            _serverConfigLocked = config("1 - General", "Lock Configuration", Toggle.On, "If on, the configuration is locked and can be changed by server admins only.");
             _ = ConfigSync.AddLockingConfigEntry(_serverConfigLocked);
 
             PanelPosition = config("2 - Settings", "Position", new Vector2(-100f, 50f), new ConfigDescription("Set position of panel", null, new ConfigurationManagerAttributes()
@@ -99,14 +106,19 @@ namespace TraderQuests
             {
                 Order = 0
             }));
+            RequiredKeyType = config("2 - Settings", "Required Key Type", KeyType.Player, "Set required key type");
             OverrideStore = config("2 - Settings", "Override Trader", Toggle.Off, "If on, vanilla store will use loaded YML data");
 
             BountyEnabled = config("Bounty", "Enabled", Toggle.On, "If on, bounties enabled");
             BountyReturnCost = config("Bounty", "Return Cost", Toggle.On, "If on, canceling a bounty will return cost to user");
             BountyCooldown = config("Bounty", "Cooldown", 60.0, "Set duration between new bounties, in minutes");
+            ShowAllBounties = config("Bounty", "Show All", Toggle.Off, "If on, all bounties are displayed regardless of cooldown or requirements");
+            ShowAllBounties.SettingChanged += (_, _) => BountySystem.ClearLoadedBounties();
             MaxBountyDisplayed = config("Bounty", "Max Available", 10, "Set max amount of available bounties displayed");
             MaxActiveBounties = config("Bounty", "Max Active", 10, "Set max amount of active bounties");
 
+            ShowAllTreasures = config("Treasure", "Show All", Toggle.Off, "If on, all treasure hunts are displayed regardless of cooldown or requirements");
+            ShowAllTreasures.SettingChanged += (_, _) => TreasureSystem.ClearLoadedTreasures();
             TreasureReturnCost = config("Treasure", "Return Cost", Toggle.On, "If on, canceling a treasure hunt will return cost to user");
             TreasureEnabled = config("Treasure", "Enabled", Toggle.On, "If on, treasure hunt enabled");
             TreasureCooldown = config("Treasure", "Cooldown", 60.0, "Set duration between new treasures, in minutes");

@@ -1,4 +1,5 @@
-﻿using System.ComponentModel;
+﻿using System;
+using System.ComponentModel;
 using System.Linq;
 using HarmonyLib;
 using TraderQuests.Quest;
@@ -54,6 +55,7 @@ public class TraderUI : MonoBehaviour
     public Text m_selectButtonText = null!;
     public Text m_cancelButtonText = null!;
     public Text m_tooltip = null!;
+    public Text m_time = null!;
 
     [Description("Root scrollbar containers")]
     public RectTransform m_listRoot = null!;
@@ -74,6 +76,7 @@ public class TraderUI : MonoBehaviour
     public Button m_cancelButton = null!;
     
     public string CurrentTopic = "$button_bounty";
+    private float m_timeTimer;
 
     public void Awake()
     {
@@ -96,6 +99,7 @@ public class TraderUI : MonoBehaviour
         m_shopButtonText = Utils.FindChild(gameObject.transform, "$text_shop").GetComponent<Text>();
         m_currencyText = Utils.FindChild(gameObject.transform, "$text_currency").GetComponent<Text>();
         m_currencyImage = Utils.FindChild(gameObject.transform, "$image_currency").GetComponent<Image>();
+        m_time = Utils.FindChild(gameObject.transform, "$text_time").GetComponent<Text>();
             
         m_topic.color = new Color32(255, 164, 0, 255);
         m_activeText.color = new Color32(255, 164, 0, 255);
@@ -124,6 +128,27 @@ public class TraderUI : MonoBehaviour
         SetupAssets();
         SetupButtons();
     }
+
+    public void Update()
+    {
+        m_timeTimer += Time.deltaTime;
+        if (m_timeTimer < 1f) return;
+        m_timeTimer = 0.0f;
+        switch (CurrentTopic)
+        {
+            case "$button_bounty":
+                SetTime(BountySystem.GetCountdown());
+                break;
+            case "$button_treasure":
+                SetTime(TreasureSystem.GetCountdown());
+                break;
+            default:
+                SetTime("");
+                break;
+        }
+    }
+
+    public void SetTime(string text) => m_time.text = Localization.instance.Localize(text);
     public void Show() => gameObject.SetActive(true);
     public void Hide() => gameObject.SetActive(false);
 

@@ -357,7 +357,7 @@ public static class Shop
         public bool HasRequiredKey()
         {
             if (Config.RequiredKey.IsNullOrWhiteSpace()) return true;
-            return Player.m_localPlayer.HaveUniqueKey(Config.RequiredKey);
+            return QuestSystem.HasKey(Config.RequiredKey);
         }
 
         private string GetTooltip()
@@ -428,7 +428,7 @@ public static class Shop
         public int Quality = 1;
         public string CurrencyPrefab = "Coins";
         public int Price;
-        public int OnSalePrice;
+        public int OnSalePrice = 1;
         public string RequiredKey = "";
         public float Weight = 1f;
         public bool CanBeOnSale = true;

@@ -22,7 +22,7 @@ public static class TreasureSystem
     private static readonly Dictionary<string, TreasureData> AvailableTreasures = new();
     private static readonly Dictionary<string, TreasureData> ActiveTreasures = new();
     private static readonly Dictionary<string, TreasureData> CompletedTreasures = new();
-    private static readonly List<TreasureData> LoadedTreasures = new();
+    private static List<TreasureData> LoadedTreasures = new();
     private static GameObject? TreasureBarrel;
     public static TreasureData? SelectedTreasure;
     public static TreasureData? SelectedActiveTreasure;
@@ -57,6 +57,8 @@ public static class TreasureSystem
             SetupTreasures();
         }
     }
+
+    public static void ClearLoadedTreasures() => LoadedTreasures.Clear();
 
     public static void CheckActiveTreasures(Player player)
     {
@@ -288,34 +290,54 @@ public static class TreasureSystem
         }
     }
 
+    private static void CheckCompletedToReset()
+    {
+        if (CompletedTreasures.Count <= 0) return;
+        List<TreasureData> treasuresToRemove = new();
+        foreach (var treasure in CompletedTreasures.Values)
+        {
+            if (treasure.CooldownPassed())
+            {
+                AvailableTreasures[treasure.Config.UniqueID] = treasure;
+                treasuresToRemove.Add(treasure);
+                treasure.ClearData();
+            }
+        }
+
+        foreach (var treasure in treasuresToRemove)
+        {
+            CompletedTreasures.Remove(treasure.Config.UniqueID);
+        }
+    }
+
+    private static bool ShouldReload() => LastLoadedTime == 0.0 || LoadedTreasures.Count <= 0 ||
+                                          ZNet.m_instance.GetTimeSeconds() - LastLoadedTime >
+                                          TimeSpan.FromMinutes(TraderQuestsPlugin.TreasureCooldown.Value).TotalSeconds;
+
+    public static string GetCountdown()
+    {
+        TimeSpan time = TimeSpan.FromSeconds(LastLoadedTime +
+                                             TimeSpan.FromMinutes(TraderQuestsPlugin.TreasureCooldown.Value)
+                                                 .TotalSeconds -
+                                             ZNet.m_instance.GetTimeSeconds());
+        return $"{time.Minutes:0}:{time.Seconds:00}";
+    }
+
+    private static List<TreasureData> GetAvailable()
+    {
+        return TraderQuestsPlugin.ShowAllTreasures.Value is TraderQuestsPlugin.Toggle.On ? AllTreasures.Values.ToList() : AvailableTreasures.Values.Where(treasure => treasure.HasRequiredKey()).ToList();
+    }
+
     public static void LoadAvailable()
     {
         if (TraderUI.m_item is null || !TraderUI.m_instance || !ZNet.m_instance) return;
 
-        if (CompletedTreasures.Count > 0)
-        {
-            List<TreasureData> treasuresToRemove = new();
-            foreach (var treasure in CompletedTreasures.Values)
-            {
-                if (treasure.CoolDownPassed())
-                {
-                    AvailableTreasures[treasure.Config.UniqueID] = treasure;
-                    treasuresToRemove.Add(treasure);
-                }
-            }
-
-            foreach (var treasure in treasuresToRemove)
-            {
-                CompletedTreasures.Remove(treasure.Config.UniqueID);
-            }
-        }
-
+        CheckCompletedToReset();
         bool reloadPositions = false;
-        if (LastLoadedTime == 0.0 || LoadedTreasures.Count <= 0 || ZNet.m_instance.GetTimeSeconds() - LastLoadedTime >
-            TraderQuestsPlugin.TreasureCooldown.Value * 60)
+        if (ShouldReload())
         {
             LoadedTreasures.Clear();
-            List<TreasureData> treasures = new List<TreasureData>(AvailableTreasures.Values.Where(treasure => treasure.HasRequiredKey()).ToList());
+            List<TreasureData> treasures = GetAvailable();
             for (int index = 0; index < TraderQuestsPlugin.MaxTreasureDisplayed.Value; ++index)
             {
                 if (GetRandomWeightedTreasure(treasures) is { } treasure)
@@ -326,6 +348,11 @@ public static class TreasureSystem
             }
             LastLoadedTime = ZNet.m_instance.GetTimeSeconds();
             reloadPositions = true;
+        }
+
+        if (TraderQuestsPlugin.ShowAllTreasures.Value is TraderQuestsPlugin.Toggle.On)
+        {
+            LoadedTreasures = AllTreasures.Values.ToList();
         }
         
         foreach (var treasure in LoadedTreasures)
@@ -579,8 +606,8 @@ public static class TreasureSystem
         public Vector3 Position;
         public Minimap.PinData? PinData;
         public readonly List<RewardData> Rewards = new();
-        private bool Completed;
         public long CompletedOn;
+        private bool Completed;
         public bool Spawned;
 
         public void OnSelected(ItemUI component, bool enable, bool active, bool reloadPos)
@@ -626,6 +653,7 @@ public static class TreasureSystem
         {
             StringBuilder stringBuilder = new StringBuilder();
             stringBuilder.Append($"\n<color=yellow>{Config.Name}</color>\n\n");
+            if (!CooldownPassed()) stringBuilder.Append($"{Keys.Cooldown}: <color=red>{GetCooldown()}</color>\n");
             stringBuilder.Append($"{Keys.Location}: <color=orange>{Biome}</color>\n");
             stringBuilder.Append($"{Keys.Distance}: <color=orange>{Mathf.FloorToInt(Vector3.Distance(Player.m_localPlayer.transform.position, Position))}</color>\n");
             stringBuilder.Append($"<color=orange>{Keys.Rewards}:</color>\n");
@@ -650,25 +678,41 @@ public static class TreasureSystem
 
         public void SetCompleted(bool completed, long completedOn)
         {
+            if (completed)
+            {
+                CompletedOn = completedOn;
+                CompletedTreasures[Config.UniqueID] = this;
+            }
+            else
+            {
+                CompletedTreasures.Remove(Config.UniqueID);
+                CompletedOn = 0L;
+            }
+
             Completed = completed;
-            CompletedOn = completedOn;
-            CompletedTreasures[Config.UniqueID] = this;
         }
 
-        public bool CoolDownPassed() => DateTime.Now.Ticks > Config.Cooldown + CompletedOn;
+        public bool CooldownPassed() => DateTime.Now.Ticks > CompletedOn + TimeSpan.FromMinutes(Config.Cooldown).Ticks;
+
+        private string GetCooldown()
+        {
+            TimeSpan time =
+                TimeSpan.FromTicks(CompletedOn + TimeSpan.FromMinutes(Config.Cooldown).Ticks - DateTime.Now.Ticks);
+            return $"{time.Minutes:0}:{time.Seconds:00}";
+        }
 
         public void ClearData()
         {
             Position = Vector3.zero;
             CompletedOn = 0L;
-            Completed = false;
             Spawned = false;
+            Completed = false;
         }
 
         public bool HasRequirements()
         {
             if (!Player.m_localPlayer) return false;
-            if (!HasRequiredKey()) return false;
+            if (!HasRequiredKey() || Completed || Spawned) return false;
             if (ActiveTreasures.Count >= TraderQuestsPlugin.MaxActiveTreasures.Value) return false;
             return Player.m_localPlayer.GetInventory().CountItems(CurrencySharedName) >= Config.Price;
         }
@@ -676,7 +720,7 @@ public static class TreasureSystem
         public bool HasRequiredKey()
         {
             if (Config.RequiredKey.IsNullOrWhiteSpace()) return true;
-            return Player.m_localPlayer.HaveUniqueKey(Config.RequiredKey);
+            return QuestSystem.HasKey(Config.RequiredKey);
         }
 
         public bool Activate(bool checkRequirements = true)
@@ -726,12 +770,7 @@ public static class TreasureSystem
             return true;
         }
 
-        private bool ValidateBiome()
-        {
-            if (!Enum.TryParse(Config.Biome, true, out Biome)) return false;
-            return true;
-        }
-
+        private bool ValidateBiome() => Enum.TryParse(Config.Biome, true, out Biome);
         private bool ValidateRewards()
         {
             foreach (var config in Config.Rewards)

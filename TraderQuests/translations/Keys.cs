@@ -34,4 +34,7 @@ public static class Keys
     public const string NoGambleItems = "$trader_no_gamble_items";
     public const string OnSuccess = "$trader_on_success";
     public const string OnFail = "$trader_on_fail";
+
+    public const string Cooldown = "$trader_cooldown";
+    public const string Refresh = "$trader_refresh";
 }

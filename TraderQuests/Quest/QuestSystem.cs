@@ -162,6 +162,12 @@ public static class QuestSystem
         float z = Random.Range(-maxRadius, maxRadius);
         return new Vector3(x, y, z);
     }
+    
+    public static bool HasKey(string key)
+    {
+        if (TraderQuestsPlugin.RequiredKeyType.Value is TraderQuestsPlugin.KeyType.None) return true;
+        return TraderQuestsPlugin.RequiredKeyType.Value is TraderQuestsPlugin.KeyType.Global ? ZoneSystem.m_instance.GetGlobalKey(key) : Player.m_localPlayer.HaveUniqueKey(key);
+    }
 
     public static void RPC_RecordKill(ZRpc rpc, ZPackage pkg) => BountySystem.RecordKill(pkg.ReadString(), pkg.ReadLong());
 

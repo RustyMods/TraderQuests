@@ -27,7 +27,7 @@ public static class BountySystem
 
     public static BountyData? SelectedBounty;
     public static BountyData? SelectedActiveBounty;
-    public static readonly Dictionary<string, BountyData> AllBounties = new();
+    private static readonly Dictionary<string, BountyData> AllBounties = new();
     private static readonly Dictionary<string, BountyData> AvailableBounties = new();
     public static readonly Dictionary<string, BountyData> ActiveBounties = new();
     private static Dictionary<string, long> CompletedBounties = new();
@@ -46,6 +46,7 @@ public static class BountySystem
         }
     }
 
+    public static void ClearLoadedBounties() => LoadedBounties.Clear();
     public static void CheckActiveBounties(Player player)
     {
         if (ActiveBounties.Count <= 0) return;
@@ -207,34 +208,46 @@ public static class BountySystem
             AvailableBounties[bounty.Config.UniqueID] = bounty;
         }
     }
+
+    private static bool ShouldReload() => LoadedBounties.Count <= 0 || LastLoadedTime == 0.0 ||
+                                          ZNet.m_instance.GetTimeSeconds() - LastLoadedTime > TimeSpan.FromMinutes(TraderQuestsPlugin.BountyCooldown.Value).TotalSeconds;
+    
+    public static string GetCountdown()
+    {
+        if (LoadedBounties.Count <= 0 || LastLoadedTime == 0.0) return "";
+        TimeSpan time = TimeSpan.FromSeconds((LastLoadedTime + TimeSpan.FromMinutes(TraderQuestsPlugin.BountyCooldown.Value).TotalSeconds) - ZNet.m_instance.GetTimeSeconds());
+        return $"{time.Minutes:0}:{time.Seconds:00}";
+    }
+
+    private static void CheckCompletedBountiesForReset()
+    {
+        if (CompletedBounties.Count <= 0) return;
+        List<BountyData> bountiesToRemove = new();
+        foreach (KeyValuePair<string, long> kvp in CompletedBounties)
+        {
+            if (!AllBounties.TryGetValue(kvp.Key, out BountyData data)) continue;
+            if (data.CooldownPassed())
+            {
+                AvailableBounties[data.Config.UniqueID] = data;
+                bountiesToRemove.Add(data);
+            }
+        }
+
+        foreach (var bounty in bountiesToRemove)
+        {
+            CompletedBounties.Remove(bounty.Config.UniqueID);
+        }
+    }
     
     public static void LoadAvailable()
     {
         if (TraderUI.m_item is null || !TraderUI.m_instance || !ZNet.m_instance) return;
-        if (CompletedBounties.Count > 0)
-        {
-            List<BountyData> bountiesToRemove = new();
-            foreach (KeyValuePair<string, long> kvp in CompletedBounties)
-            {
-                if (!AllBounties.TryGetValue(kvp.Key, out BountyData data)) continue;
-                if (data.CooldownPassed())
-                {
-                    AvailableBounties[data.Config.UniqueID] = data;
-                    bountiesToRemove.Add(data);
-                }
-            }
-
-            foreach (var bounty in bountiesToRemove)
-            {
-                CompletedBounties.Remove(bounty.Config.UniqueID);
-            }
-        }
-
         bool reloadPositions = false;
-        if (LoadedBounties.Count <= 0 || LastLoadedTime == 0.0 || ZNet.m_instance.GetTimeSeconds() - LastLoadedTime > TraderQuestsPlugin.BountyCooldown.Value * 60)
+        CheckCompletedBountiesForReset();
+        if (ShouldReload())
         {
             LoadedBounties.Clear();
-            List<BountyData> bounties = AvailableBounties.Values.Where(bounty => bounty.HasRequiredKey()).ToList();
+            List<BountyData> bounties = GetAvailableBounties();
             for (int index = 0; index < TraderQuestsPlugin.MaxBountyDisplayed.Value; ++index)
             {
                 if (GetRandomWeightedBounty(bounties) is not { } bounty) continue;
@@ -252,6 +265,11 @@ public static class BountySystem
         }
         
         TraderUI.m_instance.ResizeListRoot(LoadedBounties.Count);
+    }
+
+    private static List<BountyData> GetAvailableBounties()
+    {
+        return TraderQuestsPlugin.ShowAllBounties.Value is TraderQuestsPlugin.Toggle.On ? AvailableBounties.Values.ToList() : AvailableBounties.Values.Where(bounty => bounty.HasRequiredKey()).ToList();
     }
 
     private static BountyData? GetRandomWeightedBounty(List<BountyData> data)
@@ -773,7 +791,6 @@ public static class BountySystem
         private bool Completed;
         public bool Spawned;
         private long CompletedOn;
-        public bool Active;
         public BountyData(BountyConfig config) => Config = config;
 
         public void ClearData()
@@ -783,7 +800,6 @@ public static class BountySystem
             Spawned = false;
             Completed = false;
             Position = Vector3.zero;
-            Active = false;
         }
 
         public void OnSelected(ItemUI component, bool enable, bool active, bool reloadPos)
@@ -853,7 +869,6 @@ public static class BountySystem
 
             CompletedBounties[Config.UniqueID] = CompletedOn;
             ActiveBounties.Remove(Config.UniqueID);
-            Active = false;
         }
 
         public void SetCompleted(bool completed, long timeCompleted)
@@ -864,12 +879,18 @@ public static class BountySystem
 
         public bool IsComplete() => Completed;
 
-        public bool CooldownPassed() => DateTime.Now.Ticks > Config.Cooldown + CompletedOn;
+        private string GetCooldown()
+        {
+            TimeSpan time = TimeSpan.FromTicks(CompletedOn + TimeSpan.FromMinutes(Config.Cooldown).Ticks - DateTime.Now.Ticks);
+            return $"{time.Minutes:0}:{time.Seconds:00}";
+        }
+        public bool CooldownPassed() => DateTime.Now.Ticks > CompletedOn + TimeSpan.FromMinutes(Config.Cooldown).Ticks;
 
         private string GetTooltip()
         {
             StringBuilder stringBuilder = new StringBuilder();
             stringBuilder.Append($"\n<color=yellow>{Config.Name}</color>\n\n");
+            if (!CooldownPassed()) stringBuilder.Append($"{Keys.Cooldown}: <color=red>{GetCooldown()}</color>\n");
             stringBuilder.Append($"{Keys.Location}: <color=orange>{Biome}</color>\n");
             stringBuilder.Append($"{Keys.Distance}: <color=orange>{Mathf.FloorToInt(Vector3.Distance(Player.m_localPlayer.transform.position, Position))}</color>\n");
             stringBuilder.Append($"<color=orange>{Keys.Rewards}:</color>\n");
@@ -973,6 +994,7 @@ public static class BountySystem
             if (!Player.m_localPlayer) return false;
             if (!HasRequiredKey()) return false;
             if (ActiveBounties.Count >= TraderQuestsPlugin.MaxActiveBounties.Value) return false;
+            if (!CooldownPassed()) return false;
             return Player.m_localPlayer.GetInventory().CountItems(CurrencySharedName) >= Config.Price;
         }
 
@@ -992,7 +1014,6 @@ public static class BountySystem
             AvailableBounties[Config.UniqueID] = this;
             LoadedBounties.Add(this);
             ActiveBounties.Remove(Config.UniqueID);
-            Active = false;
             Minimap.m_instance.RemovePin(PinData);
             return true;
         }
@@ -1008,7 +1029,6 @@ public static class BountySystem
             LoadedBounties.Remove(this);
             ActiveBounties[Config.UniqueID] = this;
             AddPin();
-            Active = true;
             SelectedBounty = null;
             return true;
         }
