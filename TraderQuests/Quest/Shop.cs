@@ -354,11 +354,7 @@ public static class Shop
             return Player.m_localPlayer.GetInventory().CountItems(CurrencySharedName) > Config.Price;
         }
 
-        public bool HasRequiredKey()
-        {
-            if (Config.RequiredKey.IsNullOrWhiteSpace()) return true;
-            return QuestSystem.HasKey(Config.RequiredKey);
-        }
+        public bool HasRequiredKey() => QuestSystem.HasKey(Config.RequiredKey);
 
         private string GetTooltip()
         {

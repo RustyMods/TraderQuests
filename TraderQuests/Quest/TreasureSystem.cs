@@ -175,8 +175,8 @@ public static class TreasureSystem
     public static void SaveToPlayer(Player player)
     {
         var serializer = new SerializerBuilder().Build();
-        Player.m_localPlayer.m_customData.Remove("ActiveTreasures");
-        Player.m_localPlayer.m_customData.Remove("CompletedTreasures");
+        player.m_customData.Remove("ActiveTreasures");
+        player.m_customData.Remove("CompletedTreasures");
         if (ActiveTreasures.Count > 0)
         {
             Dictionary<string, string> treasurePos = new();
@@ -717,11 +717,7 @@ public static class TreasureSystem
             return Player.m_localPlayer.GetInventory().CountItems(CurrencySharedName) >= Config.Price;
         }
 
-        public bool HasRequiredKey()
-        {
-            if (Config.RequiredKey.IsNullOrWhiteSpace()) return true;
-            return QuestSystem.HasKey(Config.RequiredKey);
-        }
+        public bool HasRequiredKey() => QuestSystem.HasKey(Config.RequiredKey);
 
         public bool Activate(bool checkRequirements = true)
         {

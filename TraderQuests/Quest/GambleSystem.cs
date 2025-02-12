@@ -165,7 +165,6 @@ public static class GambleSystem
         public bool HasRequirements()
         {
             if (Player.m_localPlayer.GetInventory().CountItems(CurrencySharedName) < Config.Price) return false;
-            if (Config.RequiredKey.IsNullOrWhiteSpace()) return true;
             return QuestSystem.HasKey(Config.RequiredKey);
         }
 

@@ -21,7 +21,7 @@ namespace TraderQuests
     public class TraderQuestsPlugin : BaseUnityPlugin
     {
         internal const string ModName = "TraderQuests";
-        internal const string ModVersion = "1.0.2";
+        internal const string ModVersion = "1.0.4";
         internal const string Author = "RustyMods";
         private const string ModGUID = Author + "." + ModName;
         private static readonly string ConfigFileName = ModGUID + ".cfg";

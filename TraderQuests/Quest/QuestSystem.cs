@@ -1,4 +1,5 @@
 ﻿using System;
+using BepInEx;
 using HarmonyLib;
 using UnityEngine;
 using Random = UnityEngine.Random;
@@ -165,6 +166,7 @@ public static class QuestSystem
     
     public static bool HasKey(string key)
     {
+        if (key.IsNullOrWhiteSpace()) return true;
         if (TraderQuestsPlugin.RequiredKeyType.Value is TraderQuestsPlugin.KeyType.None) return true;
         return TraderQuestsPlugin.RequiredKeyType.Value is TraderQuestsPlugin.KeyType.Global ? ZoneSystem.m_instance.GetGlobalKey(key) : Player.m_localPlayer.HaveUniqueKey(key);
     }

@@ -998,12 +998,7 @@ public static class BountySystem
             return Player.m_localPlayer.GetInventory().CountItems(CurrencySharedName) >= Config.Price;
         }
 
-        public bool HasRequiredKey()
-        {
-            if (Config.RequiredKey.IsNullOrWhiteSpace()) return true;
-            return Player.m_localPlayer.HaveUniqueKey(Config.RequiredKey);
-        }
-
+        public bool HasRequiredKey() => QuestSystem.HasKey(Config.RequiredKey);
         public bool Deactivate(bool returnCost)
         {
             if (returnCost)
